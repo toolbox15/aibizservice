@@ -179,7 +179,7 @@ const CFG = {
   timerSec:      42,
   pointsPerMake: 2,
   winScore:      10,
-  ballR:         34,
+  ballR:         58,   // enlarged — roughly 1/3 the visual backboard width
   rimHW:         92,   // half-width of rim opening (physics)
   netH:          100,
   rimT:          10,
@@ -526,6 +526,40 @@ async function mountGame(host, initialEmail) {
     </svg>`;
   host.appendChild(hint);
 
+  // ── Reset Ball button (always-visible safety net at bottom of screen) ──
+  const resetBtn = document.createElement('button');
+  resetBtn.id = 'reset-btn';
+  resetBtn.textContent = '↺ Reset Ball';
+  Object.assign(resetBtn.style, {
+    position: 'absolute',
+    bottom: '14px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: '15',
+    background: 'rgba(0,0,0,0.68)',
+    border: '1px solid rgba(255,95,31,0.45)',
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: '11px',
+    fontWeight: '700',
+    letterSpacing: '.18em',
+    textTransform: 'uppercase',
+    fontFamily: 'inherit',
+    padding: '8px 20px',
+    borderRadius: '2px',
+    cursor: 'pointer',
+    pointerEvents: 'auto',
+    touchAction: 'manipulation',
+    boxShadow: '0 0 12px rgba(255,95,31,0.12)',
+    transition: 'all .15s',
+  });
+  resetBtn.addEventListener('pointerdown', e => {
+    e.stopPropagation();
+    resetBall();
+    resetBtn.style.color = ORANGE;
+    setTimeout(() => { resetBtn.style.color = 'rgba(255,255,255,0.55)'; }, 400);
+  });
+  host.appendChild(resetBtn);
+
   // Email overlay
   const overlay = document.createElement('div');
   overlay.id = 'email-overlay';
@@ -683,13 +717,13 @@ async function mountGame(host, initialEmail) {
     });
   });
 
-  /* afterUpdate — boundary checks so ball never disappears off any edge */
+  /* afterUpdate — 0.1-second reset in ALL directions so ball never disappears */
   Matter.Events.on(engine, 'afterUpdate', () => {
     if (!ball || !ballInPlay) return;
     const { x, y } = ball.position;
-    if (y > H + 150)             { schedRespawn(0);    return; } // fell below floor
-    if (x < -BR * 3 || x > W + BR * 3) { schedRespawn(1000); return; } // exited sides
-    if (y < -H * 0.55)           { schedRespawn(1000); return; } // flew way off the top
+    if (y > H + 80)              { schedRespawn(100); return; } // fell below floor
+    if (x < -BR * 2 || x > W + BR * 2) { schedRespawn(100); return; } // exited sides
+    if (y < -BR * 4)             { schedRespawn(100); return; } // flew off the top
   });
 
   /* ── CUSTOM RENDER LOOP (rAF — full control, no Matter.Render) ── */
