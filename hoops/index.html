@@ -235,7 +235,7 @@ async function sendEmail({ toEmail, code, score, isWin }) {
 }
 
 /* ═══════════════════════════════════════════════
-   AUDIO — Web Audio synthesis
+   AUDIO
 ═══════════════════════════════════════════════ */
 let _ac = null;
 function getAC() {
@@ -265,7 +265,7 @@ function playSound(type) {
 }
 
 /* ═══════════════════════════════════════════════
-   IMAGE LOADER
+   IMAGE LOADER & CANVAS
 ═══════════════════════════════════════════════ */
 function loadImg(src) {
   return new Promise(resolve => {
@@ -276,9 +276,6 @@ function loadImg(src) {
   });
 }
 
-/* ═══════════════════════════════════════════════
-   CANVAS HELPERS
-═══════════════════════════════════════════════ */
 function neonGlow(c) {
   return `0 0 4px ${c}, 0 0 12px ${c}, 0 0 24px ${c}99, 0 0 48px ${c}44`;
 }
@@ -467,7 +464,7 @@ async function mountGame(host, initialEmail) {
       <span>Project SXC Presents</span>
     </div>
     <div class="title-bar">
-      <span class="tagline">Swipe to Shoot</span>
+      <span class="tagline">Swipe to Shoot V3</span>
       <div class="hs-box">
         <span class="hs-lbl">High Score</span>
         <span class="hs-val" id="hs-val" style="text-shadow:${neonGlow(ORANGE)}">0</span>
@@ -504,7 +501,7 @@ async function mountGame(host, initialEmail) {
 
   const resetBtn = document.createElement('button');
   resetBtn.id = 'reset-btn';
-  resetBtn.textContent = '↺ Reset Ball';
+  resetBtn.textContent = '↺ Reset Ball (V3)';
   Object.assign(resetBtn.style, {
     position: 'absolute',
     bottom: '14px',
@@ -687,12 +684,11 @@ async function mountGame(host, initialEmail) {
     });
   });
 
-  /* FIXED: Raised the ceiling so the ball doesn't delete itself mid-air! */
   Matter.Events.on(engine, 'afterUpdate', () => {
     if (!ball || !ballInPlay) return;
     const { x, y } = ball.position;
-    if (y < -1200)                      { schedRespawn(0); return; } // Raised the roof!
-    if (y > H + 80)                     { schedRespawn(0); return; } 
+    if (y < -1200)                     { schedRespawn(0); return; } 
+    if (y > H + 80)                    { schedRespawn(0); return; } 
     if (x < -BR * 2 || x > W + BR * 2) { schedRespawn(0); return; } 
   });
 
@@ -808,33 +804,46 @@ async function mountGame(host, initialEmail) {
     const start = ptrStart; ptrStart = null;
     if (!start || !ball || ballInPlay) return;
 
-    const dx = e.clientX - start.x, dy = e.clientY - start.y;
-    const dt = Math.max((performance.now() - start.time) / 1000, 0.05);
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    
+    // SAFETY: Prevent Math errors by ensuring dt is always a solid number
+    let dt = Math.max((performance.now() - start.time) / 1000, 0.05);
+    if (isNaN(dt) || dt <= 0) dt = 0.05; 
+    
     const dist = Math.sqrt(dx * dx + dy * dy);
 
-    if (dy < -25 && dist > 25 && dist / dt > 180) {
+    // FIXED: Only shoot if it was a real, deliberate swipe up
+    if (dy < -20 && dist > 20 && dist / dt > 120) {
       if (!gameStarted) { gameStarted = true; startTimer(); }
 
       Matter.Body.setStatic(ball, false);
 
       let vy = dy / dt * 0.019;
+      if (isNaN(vy)) vy = -8;
       vy = Math.max(-12.0, Math.min(-6.0, -Math.abs(vy) * 1.18));
 
       const toHoopX = rimX - ball.position.x;
       const posVx   = toHoopX * 0.022;
       const swipeVx = Math.max(-8, Math.min(8, (dx / dt) * 0.016));
       const magnet  = toHoopX * 0.007 * Math.max(0, 1 - Math.abs(toHoopX) / 100);
-      const vx = Math.max(-12.0, Math.min(12.0, posVx * 0.55 + swipeVx * 0.45 + magnet));
+      
+      let vx = posVx * 0.55 + swipeVx * 0.45 + magnet;
+      if (isNaN(vx)) vx = 0;
+      vx = Math.max(-12.0, Math.min(12.0, vx));
 
       ballInPlay = true; ballPastR = false;
       Matter.Body.setVelocity(ball, { x: vx, y: vy });
       Matter.Body.setAngularVelocity(ball, vx * 0.15);
       schedRespawn(2000); 
+    } else {
+      // FIXED: If the swipe was too weak, immediately put the ball back in your hand!
+      schedRespawn(0);
     }
   }
 
   host.addEventListener('pointerup',     doShoot);
-  host.addEventListener('pointercancel', () => { isDrag = false; ptrStart = null; });
+  host.addEventListener('pointercancel', () => { isDrag = false; ptrStart = null; schedRespawn(0); });
 
   /* ── EMAIL OVERLAY LOGIC ── */
   const emailInp = document.getElementById('email-inp');
