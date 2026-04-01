@@ -472,7 +472,8 @@ async function mountGame(host, initialEmail) {
   // Physics/ball canvas — redrawn every frame
   const physCvs = document.createElement('canvas');
   physCvs.width = W; physCvs.height = H;
-  Object.assign(physCvs.style, { position:'absolute', inset:0, width:'100%', height:'100%', display:'block', zIndex:5, background:'transparent', pointerEvents:'none' });
+  Object.assign(physCvs.style, { position:'absolute', inset:0, width:'100%', height:'100%', display:'block', zIndex:8, background:'transparent', pointerEvents:'none' });
+  /* z-index ladder: stadium(1) fence(2) floor(3) hoop(4) → ball(8) → HUD(10) overlay(60) */
   host.appendChild(physCvs);
   const pCtx = physCvs.getContext('2d');
 
@@ -717,13 +718,13 @@ async function mountGame(host, initialEmail) {
     });
   });
 
-  /* afterUpdate — 0.1-second reset in ALL directions so ball never disappears */
+  /* afterUpdate — instant reset in ALL directions so ball never disappears */
   Matter.Events.on(engine, 'afterUpdate', () => {
     if (!ball || !ballInPlay) return;
     const { x, y } = ball.position;
-    if (y > H + 80)              { schedRespawn(100); return; } // fell below floor
-    if (x < -BR * 2 || x > W + BR * 2) { schedRespawn(100); return; } // exited sides
-    if (y < -BR * 4)             { schedRespawn(100); return; } // flew off the top
+    if (y < 0)                          { schedRespawn(0); return; } // ceiling hit — pop back instantly
+    if (y > H + 80)                     { schedRespawn(0); return; } // fell below floor
+    if (x < -BR * 2 || x > W + BR * 2) { schedRespawn(0); return; } // exited sides
   });
 
   /* ── CUSTOM RENDER LOOP (rAF — full control, no Matter.Render) ── */
@@ -852,9 +853,9 @@ async function mountGame(host, initialEmail) {
 
       Matter.Body.setStatic(ball, false);
 
-      /* Vertical power — capped so the ball stays on-screen */
+      /* Vertical power — hard ceiling so ball never leaves the screen */
       let vy = dy / dt * 0.019;
-      vy = Math.max(-20.0, Math.min(-7.5, -Math.abs(vy) * 1.32));
+      vy = Math.max(-12.0, Math.min(-6.0, -Math.abs(vy) * 1.18));
 
       /* Horizontal aim: blend position-toward-hoop + swipe direction + auto-aim magnet */
       const toHoopX = rimX - ball.position.x;
