@@ -42,7 +42,6 @@
     }
     #court-floor-img {
       position: absolute; inset: 0;
-      /* FIX: cover + center so the texture is never distorted or stretched */
       background-image: url('./court_floor.png');
       background-size: cover;
       background-position: center center;
@@ -179,14 +178,13 @@ const CFG = {
   timerSec:      42,
   pointsPerMake: 2,
   winScore:      10,
-  ballR:         58,   // enlarged — roughly 1/3 the visual backboard width
-  rimHW:         92,   // half-width of rim opening (physics)
+  ballR:         58,   
+  rimHW:         92,   
   netH:          100,
   rimT:          10,
   cooldownMs:    86_400_000,
-  // Hoop image calibration (matches hoop_structure PNG)
-  hoopRimYFrac:  0.635, // rim sits 63.5 % down the hoop image
-  hoopRimWFrac:  0.395, // rim opening is 39.5 % of image width
+  hoopRimYFrac:  0.635, 
+  hoopRimWFrac:  0.395, 
 };
 const RED    = '#CE1141';
 const ORANGE = '#FF5F1F';
@@ -273,7 +271,7 @@ function loadImg(src) {
   return new Promise(resolve => {
     const img = new Image();
     img.onload  = () => resolve(img);
-    img.onerror = () => resolve(null);   // graceful: returns null if missing
+    img.onerror = () => resolve(null);   
     img.src = src;
   });
 }
@@ -285,7 +283,6 @@ function neonGlow(c) {
   return `0 0 4px ${c}, 0 0 12px ${c}, 0 0 24px ${c}99, 0 0 48px ${c}44`;
 }
 
-/* Chain-link fence layer (blurred canvas) */
 function drawFence(ctx, w, h) {
   ctx.fillStyle = '#111009';
   ctx.fillRect(0, 0, w, h);
@@ -304,7 +301,6 @@ function drawFence(ctx, w, h) {
   ctx.fillStyle = vig; ctx.fillRect(0, 0, w, h);
 }
 
-/* Home-base landing ring */
 function drawHomeBase(ctx, cx, cy, r) {
   ctx.strokeStyle = 'rgba(255,95,31,0.35)'; ctx.lineWidth = 2.5;
   ctx.beginPath(); ctx.arc(cx, cy, r * 1.6, 0, Math.PI * 2); ctx.stroke();
@@ -314,16 +310,13 @@ function drawHomeBase(ctx, cx, cy, r) {
   ctx.beginPath(); ctx.arc(cx, cy, r * 0.4, 0, Math.PI * 2); ctx.fill();
 }
 
-/* Draw hoop PNG — uses original React calibration constants */
 function drawHoopImage(ctx, hoopImg, backboardImg, rimX, rimY, hw) {
-  // Separate backboard.png (optional — user can drop it in the same folder)
   if (backboardImg) {
     const bbScale = (hw * 3.0) / backboardImg.naturalWidth;
     const bbW = backboardImg.naturalWidth  * bbScale;
     const bbH = backboardImg.naturalHeight * bbScale;
     ctx.drawImage(backboardImg, rimX - bbW / 2, rimY - bbH - CFG.rimT * 2, bbW, bbH);
   }
-  // Main hoop image (rim + net; includes backboard if no separate backboard.png)
   if (hoopImg) {
     const scale = (hw * 2) / (hoopImg.naturalWidth * CFG.hoopRimWFrac);
     const imgW  = hoopImg.naturalWidth  * scale;
@@ -332,7 +325,6 @@ function drawHoopImage(ctx, hoopImg, backboardImg, rimX, rimY, hw) {
   }
 }
 
-/* Draw basketball PNG (clipped circle + edge shadow, rotates with physics) */
 function drawBallImage(ctx, ballImg, x, y, r, angle) {
   ctx.save();
   ctx.translate(x, y);
@@ -344,13 +336,11 @@ function drawBallImage(ctx, ballImg, x, y, r, angle) {
   if (ballImg) {
     ctx.drawImage(ballImg, -r, -r, r * 2, r * 2);
   } else {
-    // Gradient fallback if image not yet loaded
     const g = ctx.createRadialGradient(-r*.25, -r*.3, 0, 0, 0, r);
     g.addColorStop(0, '#FFA05A'); g.addColorStop(0.6, '#E06018'); g.addColorStop(1, '#4A1200');
     ctx.fillStyle = g; ctx.fillRect(-r, -r, r*2, r*2);
   }
 
-  // Edge vignette to give the ball a spherical look
   const e = ctx.createRadialGradient(0, 0, r*.55, 0, 0, r);
   e.addColorStop(0, 'rgba(0,0,0,0)'); e.addColorStop(1, 'rgba(0,0,0,0.35)');
   ctx.fillStyle = e; ctx.fillRect(-r, -r, r*2, r*2);
@@ -370,7 +360,7 @@ const APP = {
 /* ═══════════════════════════════════════════════
    ENGINE LIFECYCLE
 ═══════════════════════════════════════════════ */
-let _eng = null; // { engine, runner, rafId, cleanup }
+let _eng = null; 
 
 function destroyEngine() {
   if (!_eng) return;
@@ -396,7 +386,6 @@ function onEmailCaptured(email) {
 function onGameEnd(score, isWin) {
   APP.finalScore = score;
   if (isWin) {
-    // Only send prize email + record 24h lock on a WIN
     const email = APP.sessionEmail || store.getEmail();
     const code  = genCode();
     APP.voucherCode = code;
@@ -404,12 +393,10 @@ function onGameEnd(score, isWin) {
       store.recordPlay(email);
       sendEmail({ toEmail: email, code, score, isWin: true });
     }
-    // Keep session email intact so Play Again skips the gate
   }
 }
 
 function onPlayAgain() {
-  // Always go straight back to the game — no cooldown wall
   go('game');
 }
 
@@ -425,21 +412,17 @@ async function mountGame(host, initialEmail) {
   const rimX   = W / 2;
   const rimY   = H * 0.42;
 
-  /* Load images (all graceful — null if missing) */
   const [ballImg, hoopImg, backboardImg] = await Promise.all([
     loadImg('./ball.png'),
     loadImg('./hoop.png'),
-    loadImg('./backboard.png'),  // optional — provide your own backboard.png
+    loadImg('./backboard.png'), 
   ]);
 
   /* ── DOM STRUCTURE ── */
-
-  // Black base
   const base = document.createElement('div');
   Object.assign(base.style, { position:'absolute', inset:0, background:'#000', zIndex:0 });
   host.appendChild(base);
 
-  // Stadium bg image
   const stadium = document.createElement('img');
   stadium.src = './stadium.png';
   stadium.alt = '';
@@ -447,20 +430,17 @@ async function mountGame(host, initialEmail) {
   Object.assign(stadium.style, { position:'absolute', inset:0, zIndex:1 });
   host.appendChild(stadium);
 
-  // Fence canvas (blurred)
   const fenceCvs = document.createElement('canvas');
   fenceCvs.width = W; fenceCvs.height = H;
   Object.assign(fenceCvs.style, { position:'absolute', inset:0, width:'100%', height:'100%', display:'block', filter:'blur(3px)', transform:'scale(1.02)', zIndex:2, pointerEvents:'none' });
   host.appendChild(fenceCvs);
   drawFence(fenceCvs.getContext('2d'), W, H);
 
-  // Court floor (perspective-warped, cover texture)
   const floorWrap = document.createElement('div');
   floorWrap.id = 'court-floor';
   floorWrap.innerHTML = `<div id="court-floor-img"></div><div id="floor-fade-near"></div><div id="floor-fade-far"></div>`;
   host.appendChild(floorWrap);
 
-  // Hoop canvas — static, drawn once
   const hoopCvs = document.createElement('canvas');
   hoopCvs.width = W; hoopCvs.height = H;
   Object.assign(hoopCvs.style, { position:'absolute', inset:0, width:'100%', height:'100%', display:'block', zIndex:4, pointerEvents:'none' });
@@ -469,15 +449,12 @@ async function mountGame(host, initialEmail) {
   drawHomeBase(hCtx, spawnX, spawnY, BR);
   drawHoopImage(hCtx, hoopImg, backboardImg, rimX, rimY, HW);
 
-  // Physics/ball canvas — redrawn every frame
   const physCvs = document.createElement('canvas');
   physCvs.width = W; physCvs.height = H;
   Object.assign(physCvs.style, { position:'absolute', inset:0, width:'100%', height:'100%', display:'block', zIndex:8, background:'transparent', pointerEvents:'none' });
-  /* z-index ladder: stadium(1) fence(2) floor(3) hoop(4) → ball(8) → HUD(10) overlay(60) */
   host.appendChild(physCvs);
   const pCtx = physCvs.getContext('2d');
 
-  // HUD
   const hud = document.createElement('div');
   hud.id = 'hud';
   hud.innerHTML = `
@@ -512,13 +489,11 @@ async function mountGame(host, initialEmail) {
     </div>`;
   host.appendChild(hud);
 
-  // Score flash
   const flash = document.createElement('div');
   flash.id = 'score-flash';
   flash.innerHTML = `<span>+${CFG.pointsPerMake}</span>`;
   host.appendChild(flash);
 
-  // Shoot hint
   const hint = document.createElement('div');
   hint.id = 'hint';
   hint.innerHTML = `<p class="hw">Swipe the ball</p><p class="hr">to shoot!</p>
@@ -527,7 +502,6 @@ async function mountGame(host, initialEmail) {
     </svg>`;
   host.appendChild(hint);
 
-  // ── Reset Ball button (always-visible safety net at bottom of screen) ──
   const resetBtn = document.createElement('button');
   resetBtn.id = 'reset-btn';
   resetBtn.textContent = '↺ Reset Ball';
@@ -561,7 +535,6 @@ async function mountGame(host, initialEmail) {
   });
   host.appendChild(resetBtn);
 
-  // Email overlay
   const overlay = document.createElement('div');
   overlay.id = 'email-overlay';
   overlay.innerHTML = `
@@ -589,11 +562,11 @@ async function mountGame(host, initialEmail) {
   let timeLeft    = CFG.timerSec;
   let gameStarted = !!initialEmail;
   let gameEnded   = false;
-  let phase       = initialEmail ? 'done' : 'idle'; // idle | showing | done
+  let phase       = initialEmail ? 'done' : 'idle'; 
   let timerID     = null;
   let respawnID   = null;
 
-  /* ── PHYSICS ENGINE ── (no Matter.Render — we draw manually) */
+  /* ── PHYSICS ENGINE ── */
   const engine = Matter.Engine.create({ gravity: { y: 1.0, scale: 0.0008 } });
   const runner  = Matter.Runner.create();
 
@@ -623,11 +596,9 @@ async function mountGame(host, initialEmail) {
   Matter.Body.setStatic(ball, true);
   Matter.World.add(engine.world, [ball, lRim, rRim, netSen, ground, wallL, wallR]);
 
-  /* Check once at game-start whether this player already claimed a prize today */
   const prizeAlreadyClaimed = store.getCooldown().locked;
-  let prizeToastShown = false; // only pop the toast once per game session
+  let prizeToastShown = false; 
 
-  /* In-game toast — slides in, auto-dismisses after 3.5 s */
   function showToast(line1, line2) {
     const old = host.querySelector('#game-toast');
     if (old) host.removeChild(old);
@@ -675,7 +646,6 @@ async function mountGame(host, initialEmail) {
   }
   function schedRespawn(ms) { clearRespawn(); respawnID = setTimeout(resetBall, ms); }
 
-  /* Collision events — scoring + sounds */
   Matter.Events.on(engine, 'collisionStart', (ev) => {
     ev.pairs.forEach(({ bodyA, bodyB }) => {
       const ls = [bodyA.label, bodyB.label];
@@ -699,7 +669,6 @@ async function mountGame(host, initialEmail) {
           if (fl) { fl.classList.add('show'); setTimeout(() => fl.classList.remove('show'), 700); }
           if (score >= CFG.winScore && !gameEnded) {
             if (prizeAlreadyClaimed) {
-              // Player already won today — show toast once and keep playing
               if (!prizeToastShown) {
                 prizeToastShown = true;
                 showToast(
@@ -718,30 +687,28 @@ async function mountGame(host, initialEmail) {
     });
   });
 
-  /* afterUpdate — instant reset in ALL directions so ball never disappears */
+  /* FIXED: Raised the ceiling so the ball doesn't delete itself mid-air! */
   Matter.Events.on(engine, 'afterUpdate', () => {
     if (!ball || !ballInPlay) return;
     const { x, y } = ball.position;
-    if (y < 0)                          { schedRespawn(0); return; } // ceiling hit — pop back instantly
-    if (y > H + 80)                     { schedRespawn(0); return; } // fell below floor
-    if (x < -BR * 2 || x > W + BR * 2) { schedRespawn(0); return; } // exited sides
+    if (y < -1200)                      { schedRespawn(0); return; } // Raised the roof!
+    if (y > H + 80)                     { schedRespawn(0); return; } 
+    if (x < -BR * 2 || x > W + BR * 2) { schedRespawn(0); return; } 
   });
 
-  /* ── CUSTOM RENDER LOOP (rAF — full control, no Matter.Render) ── */
+  /* ── CUSTOM RENDER LOOP ── */
   let rafId = null;
   function frame() {
     pCtx.clearRect(0, 0, W, H);
 
     const { x, y } = ball.position;
 
-    /* Perspective scale: ball grows as it rises toward the hoop */
     const rawPct = (spawnY - y) / (spawnY - rimY);
     const t01    = Math.max(0, Math.min(1, rawPct));
-    const eased  = t01 * t01 * (3 - 2 * t01); // smoothstep
+    const eased  = t01 * t01 * (3 - 2 * t01); 
     const above  = Math.max(0, rawPct - 1) * 0.12;
     const drawR  = BR * (1.0 + eased * 0.28 + above);
 
-    /* Ground shadow */
     const sfY = spawnY + BR;
     if (ballInPlay && y <= sfY) {
       const haf = sfY - y, maxH = spawnY * 0.85;
@@ -761,10 +728,8 @@ async function mountGame(host, initialEmail) {
       }
     }
 
-    /* Ball PNG */
     drawBallImage(pCtx, ballImg, x, y, drawR, ball.angle);
 
-    /* Neon glow ring — keeps ball visible on dark/grey backgrounds */
     pCtx.save();
     pCtx.shadowColor = ORANGE; pCtx.shadowBlur = 18;
     pCtx.strokeStyle = 'rgba(255,95,31,0.55)'; pCtx.lineWidth = 2.5;
@@ -807,7 +772,7 @@ async function mountGame(host, initialEmail) {
     setTimeout(() => go(isWin ? 'win' : 'loss'), 400);
   }
 
-  /* ── POINTER EVENTS (drag-to-position + swipe-up to shoot) ── */
+  /* ── POINTER EVENTS ── */
   let isDrag   = false;
   let ptrStart = null;
 
@@ -847,17 +812,14 @@ async function mountGame(host, initialEmail) {
     const dt = Math.max((performance.now() - start.time) / 1000, 0.05);
     const dist = Math.sqrt(dx * dx + dy * dy);
 
-    /* Only fire if it's a fast, clearly upward flick */
     if (dy < -25 && dist > 25 && dist / dt > 180) {
       if (!gameStarted) { gameStarted = true; startTimer(); }
 
       Matter.Body.setStatic(ball, false);
 
-      /* Vertical power — hard ceiling so ball never leaves the screen */
       let vy = dy / dt * 0.019;
       vy = Math.max(-12.0, Math.min(-6.0, -Math.abs(vy) * 1.18));
 
-      /* Horizontal aim: blend position-toward-hoop + swipe direction + auto-aim magnet */
       const toHoopX = rimX - ball.position.x;
       const posVx   = toHoopX * 0.022;
       const swipeVx = Math.max(-8, Math.min(8, (dx / dt) * 0.016));
@@ -867,7 +829,7 @@ async function mountGame(host, initialEmail) {
       ballInPlay = true; ballPastR = false;
       Matter.Body.setVelocity(ball, { x: vx, y: vy });
       Matter.Body.setAngularVelocity(ball, vx * 0.15);
-      schedRespawn(2000); // 2 s timeout — ball always resets if it doesn't score
+      schedRespawn(2000); 
     }
   }
 
@@ -908,7 +870,6 @@ async function mountGame(host, initialEmail) {
     startTimer();
   }
 
-  /* Register handles for destroyEngine */
   _eng = {
     engine, runner, rafId: null,
     cleanup: () => {
@@ -917,7 +878,6 @@ async function mountGame(host, initialEmail) {
       if (rafId)     { cancelAnimationFrame(rafId); rafId = null; }
     },
   };
-  /* Keep rafId in sync */
   Object.defineProperty(_eng, 'rafId', { get: () => rafId, set: v => { rafId = v; } });
 }
 
@@ -1055,7 +1015,6 @@ function renderRoot() {
    BOOT
 ═══════════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', () => {
-  // Always boot into the game — no cooldown wall blocking play
   APP.screen = 'game';
   renderRoot();
 });
