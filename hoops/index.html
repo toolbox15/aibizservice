@@ -132,6 +132,12 @@
     .start-btn:not(:disabled) { background: linear-gradient(135deg,#FF5F1F,#CE1141); color: #fff; box-shadow: 0 0 20px rgba(255,95,31,.33); }
     .overlay-b2b { font-size: 11px; color: rgba(255,255,255,.3); text-decoration: none; text-align: center; line-height: 1.5; border-bottom: 1px solid rgba(255,255,255,.12); padding-bottom: 2px; }
 
+    /* ── In-game prize toast ── */
+    @keyframes toastSlideIn {
+      from { opacity: 0; transform: translateX(-50%) translateY(-12px) scale(0.92); }
+      to   { opacity: 1; transform: translateX(-50%) translateY(0)     scale(1);    }
+    }
+
     /* ── Result screens ── */
     .result-screen {
       position: fixed; inset: 0; z-index: 100; background: #000;
@@ -388,26 +394,22 @@ function onEmailCaptured(email) {
 }
 
 function onGameEnd(score, isWin) {
-  const email = APP.sessionEmail || store.getEmail();
-  const code  = genCode();
-  APP.finalScore  = score;
-  APP.voucherCode = code;
-  if (email) {
-    store.recordPlay(email);
-    store.clearEmail();
-    sendEmail({ toEmail: email, code, score, isWin });
+  APP.finalScore = score;
+  if (isWin) {
+    // Only send prize email + record 24h lock on a WIN
+    const email = APP.sessionEmail || store.getEmail();
+    const code  = genCode();
+    APP.voucherCode = code;
+    if (email) {
+      store.recordPlay(email);
+      sendEmail({ toEmail: email, code, score, isWin: true });
+    }
+    // Keep session email intact so Play Again skips the gate
   }
-  APP.sessionEmail = null;
 }
 
 function onPlayAgain() {
-  if (store.getCooldown().locked) { go('cooldown'); return; }
-  go('game');
-}
-
-function onCooldownExpired() {
-  store.clearEmail();
-  APP.sessionEmail = null;
+  // Always go straight back to the game — no cooldown wall
   go('game');
 }
 
@@ -586,6 +588,46 @@ async function mountGame(host, initialEmail) {
   Matter.Body.setStatic(ball, true);
   Matter.World.add(engine.world, [ball, lRim, rRim, netSen, ground, wallL, wallR]);
 
+  /* Check once at game-start whether this player already claimed a prize today */
+  const prizeAlreadyClaimed = store.getCooldown().locked;
+  let prizeToastShown = false; // only pop the toast once per game session
+
+  /* In-game toast — slides in, auto-dismisses after 3.5 s */
+  function showToast(line1, line2) {
+    const old = host.querySelector('#game-toast');
+    if (old) host.removeChild(old);
+    const t = document.createElement('div');
+    t.id = 'game-toast';
+    t.style.cssText = `
+      position:absolute; left:50%; top:22%;
+      transform:translateX(-50%);
+      z-index:50; pointer-events:none;
+      width:calc(100% - 48px); max-width:320px;
+      background:rgba(0,0,0,0.90);
+      border:1.5px solid rgba(255,95,31,0.65);
+      box-shadow:0 0 30px rgba(255,95,31,0.25);
+      padding:20px 24px; text-align:center;
+      display:flex; flex-direction:column; gap:10px;
+      animation:toastSlideIn 0.38s cubic-bezier(0.22,1,0.36,1) both;
+      transition:opacity .3s, transform .3s;
+    `;
+    t.innerHTML = `
+      <p style="font-size:26px;line-height:1">🏀</p>
+      <p style="font-size:15px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:${ORANGE};text-shadow:0 0 10px rgba(255,95,31,.5)">${line1}</p>
+      <p style="font-size:12px;line-height:1.55;color:rgba(255,255,255,.78)">${line2}</p>
+      <a href="https://www.aibizservice.com" target="_blank" rel="noopener noreferrer"
+        style="font-size:10px;color:${ORANGE};text-decoration:none;letter-spacing:.08em;pointer-events:auto">
+        www.aibizservice.com →
+      </a>`;
+    host.appendChild(t);
+    setTimeout(() => {
+      if (!t.parentNode) return;
+      t.style.opacity = '0';
+      t.style.transform = 'translateX(-50%) scale(0.9)';
+      setTimeout(() => { if (t.parentNode) host.removeChild(t); }, 320);
+    }, 3500);
+  }
+
   function clearRespawn() { if (respawnID) { clearTimeout(respawnID); respawnID = null; } }
   function resetBall() {
     clearRespawn();
@@ -621,17 +663,33 @@ async function mountGame(host, initialEmail) {
           const fl = document.getElementById('score-flash');
           if (fl) { fl.classList.add('show'); setTimeout(() => fl.classList.remove('show'), 700); }
           if (score >= CFG.winScore && !gameEnded) {
-            gameEnded = true;
-            setTimeout(() => endGame(score, true), 600);
+            if (prizeAlreadyClaimed) {
+              // Player already won today — show toast once and keep playing
+              if (!prizeToastShown) {
+                prizeToastShown = true;
+                showToast(
+                  'Great Shot!',
+                  "You've already claimed today's prize.<br>Come back tomorrow for another chance!"
+                );
+              }
+              schedRespawn(1000);
+            } else {
+              gameEnded = true;
+              setTimeout(() => endGame(score, true), 600);
+            }
           } else { schedRespawn(1000); }
         }
       }
     });
   });
 
-  /* afterUpdate — respawn if ball exits screen */
+  /* afterUpdate — boundary checks so ball never disappears off any edge */
   Matter.Events.on(engine, 'afterUpdate', () => {
-    if (ball && ballInPlay && ball.position.y > H + 150) schedRespawn(0);
+    if (!ball || !ballInPlay) return;
+    const { x, y } = ball.position;
+    if (y > H + 150)             { schedRespawn(0);    return; } // fell below floor
+    if (x < -BR * 3 || x > W + BR * 3) { schedRespawn(1000); return; } // exited sides
+    if (y < -H * 0.55)           { schedRespawn(1000); return; } // flew way off the top
   });
 
   /* ── CUSTOM RENDER LOOP (rAF — full control, no Matter.Render) ── */
@@ -760,16 +818,16 @@ async function mountGame(host, initialEmail) {
 
       Matter.Body.setStatic(ball, false);
 
-      /* Vertical power */
+      /* Vertical power — capped so the ball stays on-screen */
       let vy = dy / dt * 0.019;
-      vy = Math.max(-30.0, Math.min(-7.5, -Math.abs(vy) * 1.32));
+      vy = Math.max(-20.0, Math.min(-7.5, -Math.abs(vy) * 1.32));
 
       /* Horizontal aim: blend position-toward-hoop + swipe direction + auto-aim magnet */
       const toHoopX = rimX - ball.position.x;
       const posVx   = toHoopX * 0.022;
-      const swipeVx = Math.max(-10, Math.min(10, (dx / dt) * 0.0196));
+      const swipeVx = Math.max(-8, Math.min(8, (dx / dt) * 0.016));
       const magnet  = toHoopX * 0.007 * Math.max(0, 1 - Math.abs(toHoopX) / 100);
-      const vx = Math.max(-18.4, Math.min(18.4, posVx * 0.55 + swipeVx * 0.45 + magnet));
+      const vx = Math.max(-12.0, Math.min(12.0, posVx * 0.55 + swipeVx * 0.45 + magnet));
 
       ballInPlay = true; ballPastR = false;
       Matter.Body.setVelocity(ball, { x: vx, y: vy });
@@ -962,7 +1020,8 @@ function renderRoot() {
    BOOT
 ═══════════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', () => {
-  APP.screen = store.getCooldown().locked ? 'cooldown' : 'game';
+  // Always boot into the game — no cooldown wall blocking play
+  APP.screen = 'game';
   renderRoot();
 });
 </script>
