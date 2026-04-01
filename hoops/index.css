@@ -1,0 +1,57 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+}
+
+:root {
+  --background: #000000;         /* Asphalt Black */
+  --foreground: #ffffff;         /* White Text */
+  --primary: #CE1141;            /* Chicago Red */
+  --primary-foreground: #ffffff; 
+  --tertiary: #FF5F1F;           /* Neon Orange (The Ball) */
+  --muted: #111111;
+  --muted-foreground: #888888;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body, #root {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+    background: #000000;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: #ffffff;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none;
+    user-select: none;
+  }
+}
+
+@layer utilities {
+  .screen-fade-in {
+    animation: screenFadeIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  @keyframes screenFadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+}
