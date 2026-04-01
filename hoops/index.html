@@ -1,16 +1,1154 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
-    <title>Project SXC</title>
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#000000" />
+  <title>Project SXC — Swipe to Shoot</title>
+  <style>
+    /* ── RESET ─────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #000;
+      font-family: 'Arial Black', 'Arial Bold', Arial, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #root {
+      width: 100%;
+      height: 100dvh;
+      position: relative;
+    }
+
+    /* ── ANIMATIONS ────────────────────────────────────────────── */
+    @keyframes screenIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: none; }
+    }
+    .screen-fade-in { animation: screenIn 0.55s cubic-bezier(0.22,1,0.36,1) both; }
+
+    /* ── HUD ───────────────────────────────────────────────────── */
+    #hud {
+      position: absolute; top: 0; left: 0; right: 0;
+      z-index: 10; pointer-events: none;
+    }
+    .brand-bar {
+      background: rgba(0,0,0,0.90);
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 6px 16px;
+    }
+    .brand-bar span {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.22em;
+      text-transform: uppercase; color: #666;
+    }
+    .title-bar {
+      background: rgba(0,0,0,0.88); position: relative;
+      display: flex; align-items: center; justify-content: center;
+      padding: 6px 16px;
+    }
+    .tagline {
+      font-size: 20px; font-weight: 900; letter-spacing: 0.08em;
+      text-transform: uppercase; color: #ff2a2a;
+      text-shadow: 0 0 4px #ff2020, 0 0 12px rgba(255,32,32,0.6);
+    }
+    .hs-box {
+      position: absolute; right: 16px;
+      display: flex; flex-direction: column; align-items: flex-end;
+    }
+    .hs-label { font-size: 9px; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: #555; }
+    .hs-val   { font-size: 14px; font-weight: 900; font-variant-numeric: tabular-nums; color: #FF5F1F; }
+    .red-stripe { height: 2px; background: #CE1141; }
+    .stat-row { display: flex; }
+    .stat-card {
+      flex: 1; padding: 8px 16px;
+      background: rgba(8,8,8,0.86);
+      border-bottom: 1px solid #2a2a2a;
+    }
+    .stat-card.left  { border-left:  4px solid #CE1141; }
+    .stat-card.right {
+      border-right: 4px solid #CE1141; border-left: 1px solid #222;
+      align-items: flex-end; display: flex; flex-direction: column;
+    }
+    .stat-label { font-size: 9px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; }
+    .stat-value {
+      font-size: 36px; font-weight: 900; line-height: 1;
+      font-variant-numeric: tabular-nums; font-family: monospace;
+    }
+    .timer-track { height: 2px; background: #111; }
+    .timer-fill  { height: 100%; transition: width 1s linear; }
+
+    /* ── SCORE FLASH ───────────────────────────────────────────── */
+    #score-flash {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      pointer-events: none; z-index: 20; opacity: 0; transition: opacity 0.12s;
+    }
+    #score-flash.show { opacity: 1; }
+    #score-flash span {
+      font-size: 72px; font-weight: 900; color: #FF5F1F;
+      text-shadow: 0 0 4px #FF5F1F, 0 0 14px #FF5F1F, 0 0 28px rgba(255,95,31,0.5);
+    }
+
+    /* ── SHOOT HINT ────────────────────────────────────────────── */
+    #shoot-hint {
+      position: absolute; left: 0; right: 0;
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+      pointer-events: none; z-index: 9; top: 60%; transform: translateY(-50%);
+    }
+    #shoot-hint .hw { color: #fff; font-size: 28px; font-weight: 900; text-transform: uppercase; font-style: italic; text-shadow: 0 2px 16px rgba(0,0,0,0.95); }
+    #shoot-hint .hr { color: #ff2a2a; font-size: 28px; font-weight: 900; text-transform: uppercase; font-style: italic; text-shadow: 0 0 4px #ff2020, 0 0 12px rgba(255,32,32,0.6); }
+
+    /* ── EMAIL OVERLAY ─────────────────────────────────────────── */
+    #email-overlay {
+      position: fixed; inset: 0; z-index: 60;
+      background: rgba(0,0,0,0.82); backdrop-filter: blur(6px);
+      display: none; align-items: center; justify-content: center;
+      padding: 24px;
+    }
+    #email-overlay.show { display: flex; }
+    .email-card {
+      width: 100%; max-width: 340px;
+      background: linear-gradient(160deg,#1a0900,#100008);
+      border: 1.5px solid rgba(255,95,31,0.33);
+      box-shadow: 0 0 40px rgba(255,95,31,0.13), 0 8px 48px rgba(0,0,0,0.8);
+      padding: 32px 28px 28px;
+      display: flex; flex-direction: column; align-items: center; gap: 16px;
+    }
+    .email-card h2 {
+      font-size: 21px; font-weight: 900; letter-spacing: 0.06em;
+      text-transform: uppercase; color: #FF5F1F;
+      text-shadow: 0 0 12px rgba(255,95,31,0.53);
+      text-align: center; margin: 0;
+    }
+    .email-card p {
+      margin-top: 8px; font-size: 12px; line-height: 1.5;
+      color: rgba(255,255,255,0.65); text-align: center;
+    }
+    .email-wrap { width: 100%; position: relative; }
+    .email-input {
+      width: 100%; padding: 12px 36px 12px 14px;
+      background: rgba(255,255,255,0.06);
+      border: 1.5px solid rgba(255,255,255,0.18);
+      color: #fff; font-size: 15px; outline: none; font-family: inherit;
+    }
+    .email-input.valid { border-color: #FF5F1F; box-shadow: 0 0 10px rgba(255,95,31,0.2); }
+    .email-input.err   { border-color: #CE1141; }
+    .email-check {
+      position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+      font-weight: 700; font-size: 14px;
+    }
+    .email-errmsg { font-size: 12px; color: #CE1141; align-self: flex-start; display: none; }
+    .start-btn {
+      width: 100%; padding: 14px 0; border: none;
+      font-size: 13px; font-weight: 900; letter-spacing: 0.24em;
+      text-transform: uppercase; font-family: inherit; cursor: pointer; transition: all 0.2s;
+    }
+    .start-btn:disabled { background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.22); cursor: not-allowed; }
+    .start-btn:not(:disabled) {
+      background: linear-gradient(135deg,#FF5F1F,#CE1141); color: #fff;
+      box-shadow: 0 0 20px rgba(255,95,31,0.33);
+    }
+    .overlay-b2b {
+      font-size: 11px; color: rgba(255,255,255,0.3); text-decoration: none;
+      text-align: center; line-height: 1.5;
+      border-bottom: 1px solid rgba(255,255,255,0.12); padding-bottom: 2px;
+    }
+
+    /* ── RESULT SCREENS ────────────────────────────────────────── */
+    .result-screen {
+      position: fixed; inset: 0; z-index: 100; background: #000;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 32px 24px; overflow: hidden;
+    }
+    .result-inner {
+      position: relative; width: 100%; max-width: 380px;
+      display: flex; flex-direction: column; align-items: center; gap: 22px;
+    }
+    .result-icon  { font-size: 64px; line-height: 1; }
+    .result-divider { width: 100%; height: 1px; }
+    .score-group  { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .score-lbl    { font-size: 10px; font-weight: 600; letter-spacing: 0.22em; text-transform: uppercase; color: #888; }
+    .score-big    { font-size: 72px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
+    .score-sub    { font-size: 10px; letter-spacing: 0.15em; color: #888; text-transform: uppercase; }
+    .voucher-box  {
+      width: 100%; padding: 18px 20px;
+      background: rgba(255,255,255,0.04); text-align: center;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .cta-btn {
+      width: 100%; padding: 16px; border: none;
+      font-size: 14px; font-weight: 900; letter-spacing: 0.22em;
+      text-transform: uppercase; cursor: pointer; font-family: inherit;
+    }
+    .b2b-link {
+      font-size: 11px; color: rgba(255,255,255,0.35);
+      text-decoration: none; text-align: center; line-height: 1.6;
+    }
+    .brand-footer {
+      position: absolute; bottom: 20px;
+      font-size: 10px; letter-spacing: 0.22em; color: #444; text-transform: uppercase;
+    }
+
+    /* ── COOLDOWN ──────────────────────────────────────────────── */
+    .cd-box {
+      display: flex; align-items: flex-start; justify-content: center; gap: 8px;
+      padding: 20px 32px; width: 100%; text-align: center;
+      background: rgba(255,255,255,0.03);
+      border: 1.5px solid rgba(255,95,31,0.27);
+      box-shadow: 0 0 30px rgba(255,95,31,0.09);
+    }
+    .cd-unit  { display: flex; flex-direction: column; align-items: center; min-width: 72px; }
+    .cd-num   { font-size: clamp(48px,16vw,80px); font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
+    .cd-label { font-size: 9px; letter-spacing: 0.18em; color: #888; text-transform: uppercase; margin-top: 4px; }
+    .cd-colon { font-size: clamp(38px,12vw,64px); font-weight: 900; line-height: 1; color: #FF5F1F; opacity: 0.6; align-self: flex-start; padding-top: 0.05em; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script>
+'use strict';
+
+/* ════════════════════════════════════════════════════════════════
+   CONFIG
+   ════════════════════════════════════════════════════════════════ */
+const CFG = {
+  timerSec:      42,
+  pointsPerMake: 2,
+  winScore:      10,
+  ballR:         34,
+  rimHW:         92,   // half-width of the rim opening
+  netH:          100,
+  rimT:          10,   // rim thickness
+  cooldownMs:    86_400_000, // 24 hours
+};
+
+const COLOR = {
+  red:    '#CE1141',
+  orange: '#FF5F1F',
+};
+
+/* EmailJS credentials — edit to override */
+const EJ = {
+  svc:  'service_mvh5n2o',
+  tpl:  'template_v9adm4b',
+  pub:  'rah1sIloUvqBRtIVx',
+};
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/* ════════════════════════════════════════════════════════════════
+   STORAGE HELPERS
+   ════════════════════════════════════════════════════════════════ */
+const store = {
+  getEmail:   ()  => { try { return sessionStorage.getItem('sxc_email'); } catch { return null; } },
+  saveEmail:  (e) => { try { sessionStorage.setItem('sxc_email', e); } catch {} },
+  clearEmail: ()  => { try { sessionStorage.removeItem('sxc_email'); } catch {} },
+  getCooldown() {
+    try {
+      const raw = localStorage.getItem('sxc_win');
+      if (!raw) return { locked: false, msLeft: 0 };
+      const { timestamp } = JSON.parse(raw);
+      const msLeft = CFG.cooldownMs - (Date.now() - timestamp);
+      if (msLeft <= 0) { localStorage.removeItem('sxc_win'); return { locked: false, msLeft: 0 }; }
+      return { locked: true, msLeft };
+    } catch { return { locked: false, msLeft: 0 }; }
+  },
+  recordPlay: (email) => {
+    try { localStorage.setItem('sxc_win', JSON.stringify({ email, timestamp: Date.now() })); } catch {}
+  },
+};
+
+/* ════════════════════════════════════════════════════════════════
+   EMAIL
+   ════════════════════════════════════════════════════════════════ */
+function genCode() { return 'AI-' + Math.floor(100000 + Math.random() * 900000); }
+
+async function sendEmail({ toEmail, code, score, isWin }) {
+  if (!EJ.svc || !EJ.tpl || !EJ.pub) {
+    console.info('[email] not configured:', { toEmail, code, score, isWin }); return;
+  }
+  const subject = isWin
+    ? '🏆 You Won! Claim Your Asphalt & Iron Prize'
+    : 'Thanks for Playing Asphalt & Iron!';
+  const message = isWin
+    ? `CHAMPION! You scored ${score} points and won! Show code ${code} to claim your prize. Custom AI for your business? Visit www.aibizservice.com`
+    : `You scored ${score} points — great run! The court resets in 24 hours. Custom AI for your business? Visit www.aibizservice.com`;
+  try {
+    await emailjs.send(EJ.svc, EJ.tpl,
+      { to_email: toEmail, voucher_code: code, score: String(score),
+        is_winner: isWin ? 'true' : 'false', subject, message },
+      { publicKey: EJ.pub });
+    console.info('[email] sent', isWin ? 'WIN' : 'LOSS', 'to', toEmail);
+  } catch (err) { console.error('[email]', err); }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   AUDIO — Web Audio API synthesis (no external files)
+   ════════════════════════════════════════════════════════════════ */
+let _ac = null;
+function getAC() {
+  if (!_ac) _ac = new (window.AudioContext || window.webkitAudioContext)();
+  return _ac;
+}
+function resumeAudio() {
+  try { const a = getAC(); if (a.state === 'suspended') a.resume(); } catch {}
+}
+function playSound(type) {
+  try {
+    const ac = getAC();
+    if (ac.state !== 'running') return;
+    const osc = ac.createOscillator();
+    const gain = ac.createGain();
+    osc.connect(gain); gain.connect(ac.destination);
+    const t = ac.currentTime;
+    if (type === 'rim') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(260, t);
+      osc.frequency.exponentialRampToValueAtTime(90, t + 0.35);
+      gain.gain.setValueAtTime(0.28, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+      osc.start(t); osc.stop(t + 0.4);
+    } else {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(110, t);
+      osc.frequency.exponentialRampToValueAtTime(42, t + 0.18);
+      gain.gain.setValueAtTime(0.22, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+      osc.start(t); osc.stop(t + 0.22);
+    }
+  } catch {}
+}
+
+/* ════════════════════════════════════════════════════════════════
+   CANVAS HELPERS
+   ════════════════════════════════════════════════════════════════ */
+function neonGlow(c) {
+  return `0 0 4px ${c}, 0 0 12px ${c}, 0 0 24px ${c}99, 0 0 48px ${c}44`;
+}
+
+/* Chain-link fence wall */
+function drawFence(ctx, w, h) {
+  ctx.fillStyle = '#111009';
+  ctx.fillRect(0, 0, w, h);
+
+  const amb = ctx.createRadialGradient(w/2, h*0.4, 20, w/2, h*0.4, w*0.8);
+  amb.addColorStop(0, 'rgba(40,20,10,0.6)');
+  amb.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = amb;
+  ctx.fillRect(0, 0, w, h);
+
+  const step = 20, sweep = h + step * 6;
+  ctx.strokeStyle = 'rgba(72,65,58,0.85)';
+  ctx.lineWidth = 1.3;
+  for (let i = -6; i * step < w + sweep; i++) {
+    const sx = i * step;
+    ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx + sweep, sweep); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx - sweep, sweep); ctx.stroke();
+  }
+
+  const vig = ctx.createRadialGradient(w/2, h*0.35, h*0.05, w/2, h*0.35, w*0.9);
+  vig.addColorStop(0, 'rgba(0,0,0,0)');
+  vig.addColorStop(1, 'rgba(0,0,0,0.72)');
+  ctx.fillStyle = vig;
+  ctx.fillRect(0, 0, w, h);
+}
+
+/* Basketball hoop (backboard + rim + net) */
+function drawHoop(ctx, rimX, rimY, hw, nh) {
+  const rt = CFG.rimT;
+
+  /* Backboard */
+  const bbW = hw * 3.2, bbH = hw * 1.55;
+  const bbTop = rimY - bbH - rt * 2.8;
+  const bbL = rimX - bbW / 2;
+
+  ctx.fillStyle = '#000';
+  ctx.fillRect(bbL + 5, bbTop + 5, bbW, bbH);       // shadow
+
+  ctx.fillStyle = '#dde';
+  ctx.fillRect(bbL, bbTop, bbW, bbH);
+
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(bbL, bbTop, bbW, bbH);
+
+  /* Target inner box */
+  ctx.strokeStyle = COLOR.red;
+  ctx.lineWidth = 3;
+  ctx.strokeRect(rimX - hw * 0.62, rimY - rt * 4.2, hw * 1.24, rt * 3.6);
+
+  /* Bracket from board to rim */
+  ctx.fillStyle = '#444';
+  ctx.fillRect(rimX - 7, bbTop + bbH, 14, rt * 2.2);
+
+  /* Rim posts */
+  ctx.fillStyle = COLOR.red;
+  ctx.fillRect(rimX - hw - rt * 1.1, rimY - rt / 2, rt * 2.2, rt);
+  ctx.fillRect(rimX + hw - rt * 1.1, rimY - rt / 2, rt * 2.2, rt);
+
+  /* Rim face — slight ellipse for depth */
+  ctx.beginPath();
+  ctx.ellipse(rimX, rimY + rt * 0.55, hw, rt * 0.6, 0, 0, Math.PI * 2);
+  ctx.fillStyle = COLOR.red;
+  ctx.fill();
+  ctx.strokeStyle = '#8B0B2A';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  /* Net */
+  const netTop = rimY + rt;
+  const netBot = rimY + nh;
+  const botW   = hw * 0.48;
+  const segs   = 8;
+
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = 'rgba(235,235,235,0.78)';
+
+  for (let i = 0; i <= segs; i++) {
+    const t  = i / segs;
+    const tx = rimX - hw + t * hw * 2;
+    const bx = rimX - botW + t * botW * 2;
+    ctx.beginPath(); ctx.moveTo(tx, netTop); ctx.lineTo(bx, netBot); ctx.stroke();
+  }
+  for (let lvl = 1; lvl <= 5; lvl++) {
+    const t  = lvl / 5;
+    const y  = netTop + t * (netBot - netTop);
+    const cw = hw - (hw - botW) * t;
+    ctx.beginPath(); ctx.moveTo(rimX - cw, y); ctx.lineTo(rimX + cw, y); ctx.stroke();
+  }
+}
+
+/* Basketball (canvas-drawn orange sphere with seams) */
+function drawBall(ctx, x, y, r, angle) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.clip();
+
+  const g = ctx.createRadialGradient(-r * 0.25, -r * 0.3, 0, 0, 0, r);
+  g.addColorStop(0, '#FFA05A');
+  g.addColorStop(0.6, '#E06018');
+  g.addColorStop(1, '#4A1200');
+  ctx.fillStyle = g;
+  ctx.fillRect(-r, -r, r * 2, r * 2);
+
+  ctx.strokeStyle = 'rgba(50,15,5,0.75)';
+  ctx.lineWidth = Math.max(1.5, r * 0.065);
+  ctx.beginPath(); ctx.moveTo(0, -r); ctx.lineTo(0, r); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-r, 0); ctx.lineTo(r, 0); ctx.stroke();
+  ctx.beginPath(); ctx.arc( r * 0.5, 0, r * 0.66, -Math.PI * 0.72, Math.PI * 0.72); ctx.stroke();
+  ctx.beginPath(); ctx.arc(-r * 0.5, 0, r * 0.66,  Math.PI * 0.28, Math.PI * 1.72); ctx.stroke();
+
+  const e = ctx.createRadialGradient(0, 0, r * 0.55, 0, 0, r);
+  e.addColorStop(0, 'rgba(0,0,0,0)');
+  e.addColorStop(1, 'rgba(0,0,0,0.35)');
+  ctx.fillStyle = e;
+  ctx.fillRect(-r, -r, r * 2, r * 2);
+
+  ctx.restore();
+}
+
+/* Home-base landing ring */
+function drawHomeBase(ctx, cx, cy, r) {
+  ctx.strokeStyle = 'rgba(255,95,31,0.35)';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.arc(cx, cy, r * 1.6, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,95,31,0.15)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(cx, cy, r * 2.2, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,95,31,0.12)';
+  ctx.beginPath(); ctx.arc(cx, cy, r * 0.4, 0, Math.PI * 2); ctx.fill();
+}
+
+/* ════════════════════════════════════════════════════════════════
+   APP STATE
+   ════════════════════════════════════════════════════════════════ */
+const APP = {
+  screen:       'game',   // 'game' | 'win' | 'loss' | 'cooldown'
+  sessionEmail: null,
+  finalScore:   0,
+  voucherCode:  '',
+  gameKey:      0,
+};
+
+/* ════════════════════════════════════════════════════════════════
+   PHYSICS ENGINE LIFECYCLE
+   ════════════════════════════════════════════════════════════════ */
+let _engine = null; // { runner, render, engine, cleanup }
+
+function destroyEngine() {
+  if (!_engine) return;
+  const { runner, render, engine, cleanup } = _engine;
+  if (cleanup) cleanup();
+  try { Matter.Runner.stop(runner); }   catch {}
+  try { Matter.Render.stop(render); }   catch {}
+  try { Matter.World.clear(engine.world, false); } catch {}
+  try { Matter.Engine.clear(engine); }  catch {}
+  _engine = null;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   ROOT ROUTER
+   ════════════════════════════════════════════════════════════════ */
+function go(screen) {
+  APP.screen = screen;
+  renderRoot();
+}
+
+function onEmailCaptured(email) {
+  APP.sessionEmail = email;
+  store.saveEmail(email);
+  /* silent backend ping — optional, safe to remove for pure static hosting */
+  fetch('./api/entries', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  }).catch(() => {});
+}
+
+function onGameEnd(score, isWin) {
+  const email = APP.sessionEmail || store.getEmail();
+  const code  = genCode();
+  APP.finalScore   = score;
+  APP.voucherCode  = code;
+  if (email) {
+    store.recordPlay(email);
+    store.clearEmail();
+    sendEmail({ toEmail: email, code, score, isWin });
+  }
+  APP.sessionEmail = null;
+}
+
+function onPlayAgain() {
+  const cd = store.getCooldown();
+  if (cd.locked) { go('cooldown'); return; }
+  APP.finalScore = 0;
+  APP.gameKey++;
+  go('game');
+}
+
+function onCooldownExpired() {
+  store.clearEmail();
+  APP.sessionEmail = null;
+  APP.finalScore = 0;
+  APP.gameKey++;
+  go('game');
+}
+
+/* ════════════════════════════════════════════════════════════════
+   GAME SCREEN
+   ════════════════════════════════════════════════════════════════ */
+function mountGame(host, initialEmail) {
+  const W = host.offsetWidth;
+  const H = host.offsetHeight;
+  const BR = CFG.ballR, HW = CFG.rimHW, NH = CFG.netH, RT = CFG.rimT;
+  const spawnX = Math.round(W / 2);
+  const spawnY = H - BR - 2;
+  const rimX   = W / 2;
+  const rimY   = H * 0.42;
+
+  /* -- DOM layers -- */
+  /* Layer 0: solid black */
+  const base = Object.assign(document.createElement('div'), {});
+  Object.assign(base.style, { position:'absolute', inset:0, background:'#000', zIndex:0 });
+  host.appendChild(base);
+
+  /* Layer 2: blurred chain-link fence */
+  const fenceCvs = document.createElement('canvas');
+  fenceCvs.width = W; fenceCvs.height = H;
+  Object.assign(fenceCvs.style, {
+    position:'absolute', inset:0, width:'100%', height:'100%',
+    display:'block', filter:'blur(3px)', transform:'scale(1.02)',
+    zIndex:2, pointerEvents:'none',
+  });
+  host.appendChild(fenceCvs);
+  drawFence(fenceCvs.getContext('2d'), W, H);
+
+  /* Layer 3: perspective court floor */
+  const floorWrap = document.createElement('div');
+  Object.assign(floorWrap.style, {
+    position:'absolute', left:'-20%', right:'-20%', top:'52%', bottom:0,
+    transformOrigin:'top center', transform:'perspective(320px) rotateX(58deg)',
+    overflow:'hidden', pointerEvents:'none', zIndex:3,
+  });
+  const floorImg = document.createElement('div');
+  Object.assign(floorImg.style, {
+    position:'absolute', inset:0,
+    background:'#484848',
+    /* Place court_floor.png in the same folder as index.html for the texture */
+    backgroundImage:"url('./court_floor.png')",
+    backgroundSize:'100% 100%', backgroundRepeat:'no-repeat',
+  });
+  const floorFN = document.createElement('div');
+  Object.assign(floorFN.style, { position:'absolute', inset:0, background:'linear-gradient(to bottom,transparent 40%,rgba(0,0,0,0.55) 100%)' });
+  const floorFF = document.createElement('div');
+  Object.assign(floorFF.style, { position:'absolute', inset:0, background:'linear-gradient(to top,transparent 60%,rgba(0,0,0,0.72) 100%)' });
+  floorWrap.append(floorImg, floorFN, floorFF);
+  host.appendChild(floorWrap);
+
+  /* Layer 4: static hoop canvas */
+  const hoopCvs = document.createElement('canvas');
+  hoopCvs.width = W; hoopCvs.height = H;
+  Object.assign(hoopCvs.style, { position:'absolute', inset:0, width:'100%', height:'100%', display:'block', zIndex:4, pointerEvents:'none' });
+  host.appendChild(hoopCvs);
+  const hCtx = hoopCvs.getContext('2d');
+  drawHomeBase(hCtx, spawnX, spawnY, BR);
+  drawHoop(hCtx, rimX, rimY, HW, NH);
+
+  /* Layer 5: physics / ball canvas */
+  const physCvs = document.createElement('canvas');
+  physCvs.width = W; physCvs.height = H;
+  Object.assign(physCvs.style, { position:'absolute', inset:0, width:'100%', height:'100%', display:'block', background:'transparent', zIndex:5 });
+  host.appendChild(physCvs);
+
+  /* HUD */
+  const hud = document.createElement('div');
+  hud.id = 'hud';
+  hud.innerHTML = `
+    <div class="brand-bar">
+      <svg width="20" height="20" viewBox="0 0 12 12" fill="none">
+        <circle cx="6" cy="6" r="5" stroke="#CE1141" stroke-width="1.4"/>
+        <line x1="6" y1="1" x2="6" y2="11" stroke="#CE1141" stroke-width="1.4"/>
+        <line x1="1" y1="6" x2="11" y2="6" stroke="#CE1141" stroke-width="1.4"/>
+      </svg>
+      <span>Project SXC Presents</span>
+    </div>
+    <div class="title-bar">
+      <span class="tagline">Swipe to Shoot</span>
+      <div class="hs-box">
+        <span class="hs-label">High Score</span>
+        <span class="hs-val" id="hs-val" style="text-shadow:${neonGlow(COLOR.orange)}">0</span>
+      </div>
+    </div>
+    <div class="red-stripe"></div>
+    <div class="stat-row">
+      <div class="stat-card left">
+        <p class="stat-label" style="color:${COLOR.orange};text-shadow:0 0 6px rgba(255,95,31,0.7)">Current Score</p>
+        <p class="stat-value" id="score-val" style="color:${COLOR.orange};text-shadow:${neonGlow(COLOR.orange)}">0</p>
+      </div>
+      <div class="stat-card right">
+        <p class="stat-label" id="timer-lbl" style="color:${COLOR.orange}">Time Left</p>
+        <p class="stat-value" id="timer-val" style="color:${COLOR.orange};text-shadow:${neonGlow(COLOR.orange)}">0:42</p>
+      </div>
+    </div>
+    <div class="timer-track">
+      <div class="timer-fill" id="timer-fill" style="width:100%;background:${COLOR.orange};box-shadow:0 0 8px ${COLOR.orange}"></div>
+    </div>
+  `;
+  host.appendChild(hud);
+
+  /* Score flash */
+  const flash = document.createElement('div');
+  flash.id = 'score-flash';
+  flash.innerHTML = `<span>+${CFG.pointsPerMake}</span>`;
+  host.appendChild(flash);
+
+  /* Shoot hint */
+  const hint = document.createElement('div');
+  hint.id = 'shoot-hint';
+  hint.innerHTML = `
+    <p class="hw">Swipe the ball</p>
+    <p class="hr">to shoot!</p>
+    <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
+      <path d="M7 18l8-9 8 9M7 11l8-9 8 9" stroke="${COLOR.orange}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`;
+  host.appendChild(hint);
+
+  /* Email overlay */
+  const overlay = document.createElement('div');
+  overlay.id = 'email-overlay';
+  overlay.innerHTML = `
+    <div class="email-card">
+      <div style="font-size:40px;line-height:1">🏀</div>
+      <div>
+        <h2>Win a Prize!</h2>
+        <p>Enter your email to redeem your prize if you win!</p>
+      </div>
+      <div class="email-wrap">
+        <input type="email" inputmode="email" autocomplete="email"
+          placeholder="you@example.com" id="email-inp" class="email-input" />
+        <span id="email-chk" class="email-check"></span>
+      </div>
+      <p id="email-err" class="email-errmsg">Please enter a valid email address</p>
+      <button id="start-btn" class="start-btn" disabled>START GAME</button>
+      <a href="https://www.aibizservice.com" target="_blank" rel="noopener noreferrer" class="overlay-b2b">
+        Custom AI for your business?
+        <span style="color:${COLOR.orange}"> Visit www.aibizservice.com</span>
+      </a>
+    </div>`;
+  host.appendChild(overlay);
+
+  /* ── Game state ── */
+  let score       = 0;
+  let timeLeft    = CFG.timerSec;
+  let gameStarted = !!initialEmail;
+  let gameEnded   = false;
+  let phase       = initialEmail ? 'done' : 'idle'; // idle | showing | done
+  let timerID     = null;
+  let respawnID   = null;
+
+  /* ── Physics ── */
+  const engine = Matter.Engine.create({ gravity: { y: 1.0, scale: 0.0008 } });
+  const render = Matter.Render.create({
+    canvas: physCvs, engine,
+    options: { width: W, height: H, background: 'rgba(0,0,0,0)', wireframes: false },
+  });
+  const runner = Matter.Runner.create();
+
+  function mkRimBody(x, y) {
+    return Matter.Bodies.rectangle(x, y, RT * 2, RT * 2, {
+      isStatic: true, restitution: 0.45, friction: 0.35,
+      label: 'rim', render: { visible: false },
+    });
+  }
+  const lRim     = mkRimBody(rimX - HW, rimY);
+  const rRim     = mkRimBody(rimX + HW, rimY);
+  const netSen   = Matter.Bodies.rectangle(rimX, rimY + NH/2 + RT, HW*2 - RT*2, NH, {
+    isStatic: true, isSensor: true, label: 'net', render: { visible: false },
+  });
+  const ground   = Matter.Bodies.rectangle(W/2, H+50, W*3, 100, { isStatic: true, label: 'ground', render: { visible: false } });
+  const wallL    = Matter.Bodies.rectangle(-50, H/2, 100, H*3, { isStatic: true, render: { visible: false } });
+  const wallR    = Matter.Bodies.rectangle(W+50, H/2, 100, H*3, { isStatic: true, render: { visible: false } });
+
+  function mkBall(x, y) {
+    return Matter.Bodies.circle(x, y, BR, {
+      restitution: 0.8, friction: 0.04, frictionAir: 0.028, density: 0.006,
+      label: 'ball', render: { visible: false },
+    });
+  }
+
+  let ball         = mkBall(spawnX, spawnY);
+  let ballInPlay   = false;
+  let ballPastRim  = false;
+  Matter.Body.setStatic(ball, true);
+  Matter.World.add(engine.world, [ball, lRim, rRim, netSen, ground, wallL, wallR]);
+
+  function clearRespawn() { if (respawnID) { clearTimeout(respawnID); respawnID = null; } }
+  function resetBall() {
+    clearRespawn();
+    isDrag = false; ptrStart = null;
+    if (ball) { Matter.World.remove(engine.world, ball); }
+    ball = mkBall(spawnX, spawnY);
+    Matter.Body.setStatic(ball, true);
+    Matter.World.add(engine.world, ball);
+    ballInPlay  = false;
+    ballPastRim = false;
+  }
+  function schedRespawn(ms) { clearRespawn(); respawnID = setTimeout(resetBall, ms); }
+
+  /* Score + collision */
+  Matter.Events.on(engine, 'collisionStart', (ev) => {
+    ev.pairs.forEach(({ bodyA, bodyB }) => {
+      const ls = [bodyA.label, bodyB.label];
+      if (ls.includes('ball') && ballInPlay) {
+        if (ls.includes('rim')) { playSound('rim'); }
+        else if (ls.includes('ground')) {
+          const b = ls[0] === 'ball' ? bodyA : bodyB;
+          if (Math.abs(b.velocity.y) > 0.3) playSound('floor');
+        }
+      }
+      if (ls.includes('net') && ls.includes('ball') && ballInPlay && !ballPastRim) {
+        const b = ls[0] === 'ball' ? bodyA : bodyB;
+        if (b.velocity.y > 0) {
+          ballPastRim = true;
+          score += CFG.pointsPerMake;
+
+          const sv = document.getElementById('score-val');
+          const hv = document.getElementById('hs-val');
+          if (sv) sv.textContent = score;
+          if (hv) hv.textContent = score;
+
+          const fl = document.getElementById('score-flash');
+          if (fl) { fl.classList.add('show'); setTimeout(() => fl.classList.remove('show'), 700); }
+
+          if (score >= CFG.winScore && !gameEnded) {
+            gameEnded = true;
+            setTimeout(() => endGame(score, true), 600);
+          } else {
+            schedRespawn(1000);
+          }
+        }
+      }
+    });
+  });
+
+  Matter.Events.on(engine, 'afterUpdate', () => {
+    if (ball && ballInPlay && ball.position.y > H + 150) schedRespawn(0);
+  });
+
+  /* Custom ball rendering */
+  Matter.Events.on(render, 'afterRender', () => {
+    if (!ball) return;
+    const { x, y } = ball.position;
+    const ctx = render.context;
+    ctx.clearRect(0, 0, W, H);
+
+    const rawPct = (spawnY - y) / (spawnY - rimY);
+    const t01    = Math.max(0, Math.min(1, rawPct));
+    const eased  = t01 * t01 * (3 - 2 * t01);
+    const above  = Math.max(0, rawPct - 1) * 0.12;
+    const ps     = 1.0 + eased * 0.28 + above;
+    const dr     = BR * ps;
+
+    /* Shadow */
+    const sfY = spawnY + BR;
+    if (ballInPlay && y <= sfY) {
+      const haf = sfY - y, maxH = spawnY * 0.85;
+      const t   = Math.min(1, haf / maxH);
+      const sRx = dr * (1.35 - t * 0.65), sRy = dr * (0.28 - t * 0.16);
+      const sA  = 0.55 * (1 - t * 0.7);
+      if (sA > 0.01) {
+        ctx.save(); ctx.globalAlpha = sA;
+        const sg = ctx.createRadialGradient(x, sfY, 0, x, sfY, sRx);
+        sg.addColorStop(0, 'rgba(0,0,0,0.9)');
+        sg.addColorStop(0.5, 'rgba(0,0,0,0.45)');
+        sg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = sg;
+        ctx.beginPath(); ctx.ellipse(x, sfY, sRx, sRy, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    drawBall(ctx, x, y, dr, ball.angle);
+
+    ctx.save();
+    ctx.shadowColor = COLOR.orange; ctx.shadowBlur = 18;
+    ctx.strokeStyle = 'rgba(255,95,31,0.55)'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(x, y, dr + 1.5, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  });
+
+  Matter.Render.run(render);
+  Matter.Runner.run(runner, engine);
+
+  /* Timer */
+  function updateTimerUI() {
+    const m = Math.floor(timeLeft / 60), s = (timeLeft % 60).toString().padStart(2, '0');
+    const col = timeLeft > 12 ? COLOR.orange : COLOR.red;
+    const tv = document.getElementById('timer-val');
+    const tl = document.getElementById('timer-lbl');
+    const tf = document.getElementById('timer-fill');
+    if (tv) { tv.textContent = `${m}:${s}`; tv.style.color = col; tv.style.textShadow = neonGlow(col); }
+    if (tl) { tl.style.color = col; }
+    if (tf) { tf.style.width = `${(timeLeft / CFG.timerSec) * 100}%`; tf.style.background = col; tf.style.boxShadow = `0 0 8px ${col}`; }
+  }
+
+  function startTimer() {
+    if (timerID) return;
+    const h = document.getElementById('shoot-hint');
+    if (h) h.style.display = 'none';
+    timerID = setInterval(() => {
+      if (gameEnded) { clearInterval(timerID); timerID = null; return; }
+      timeLeft--;
+      updateTimerUI();
+      if (timeLeft <= 0) {
+        clearInterval(timerID); timerID = null;
+        gameEnded = true;
+        endGame(score, score >= CFG.winScore);
+      }
+    }, 1000);
+  }
+
+  if (gameStarted) startTimer();
+
+  function endGame(s, isWin) {
+    clearRespawn();
+    onGameEnd(s, isWin);
+    setTimeout(() => go(isWin ? 'win' : 'loss'), 400);
+  }
+
+  /* Pointer events */
+  let isDrag   = false;
+  let ptrStart = null;
+
+  host.addEventListener('pointerdown', (e) => {
+    if (phase === 'idle') {
+      phase = 'showing';
+      overlay.classList.add('show');
+      setTimeout(() => document.getElementById('email-inp')?.focus(), 80);
+      return;
+    }
+    if (phase === 'showing') return;
+
+    resumeAudio();
+    if (ballInPlay || !ball || gameEnded) return;
+
+    const margin = BR + 20;
+    const cx = Math.max(margin, Math.min(W - margin, e.clientX));
+    const py = H - BR - 2;
+    Matter.Body.setStatic(ball, true);
+    Matter.Body.setPosition(ball, { x: cx, y: py });
+    isDrag = true;
+    ptrStart = { x: e.clientX, y: e.clientY, time: performance.now() };
+  });
+
+  host.addEventListener('pointermove', (e) => {
+    if (phase !== 'done' || !isDrag || !ball) return;
+    const margin = BR + 20;
+    const cx = Math.max(margin, Math.min(W - margin, e.clientX));
+    Matter.Body.setPosition(ball, { x: cx, y: H - BR - 2 });
+    const now = performance.now();
+    if (ptrStart && (now - ptrStart.time) > 100) ptrStart = { x: e.clientX, y: e.clientY, time: now };
+  });
+
+  function pointerUp(e) {
+    if (phase !== 'done' || !isDrag) return;
+    isDrag = false;
+    const start = ptrStart; ptrStart = null;
+    if (!start || !ball || ballInPlay) return;
+
+    const dx = e.clientX - start.x, dy = e.clientY - start.y;
+    const dt = Math.max((performance.now() - start.time) / 1000, 0.05);
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dy < -25 && dist > 25 && dist / dt > 180) {
+      if (!gameStarted) { gameStarted = true; startTimer(); }
+
+      Matter.Body.setStatic(ball, false);
+
+      let vy = dy / dt * 0.019;
+      vy = Math.max(-30.0, Math.min(-7.5, -Math.abs(vy) * 1.32));
+
+      const toHoopX = rimX - ball.position.x;
+      const posVx   = toHoopX * 0.022;
+      const swipeVx = Math.max(-10, Math.min(10, (dx / dt) * 0.0196));
+      const magnet  = toHoopX * 0.007 * Math.max(0, 1 - Math.abs(toHoopX) / 100);
+      let vx = Math.max(-18.4, Math.min(18.4, posVx * 0.55 + swipeVx * 0.45 + magnet));
+
+      ballInPlay = true; ballPastRim = false;
+      Matter.Body.setVelocity(ball, { x: vx, y: vy });
+      Matter.Body.setAngularVelocity(ball, vx * 0.15);
+      schedRespawn(1500);
+    }
+  }
+
+  host.addEventListener('pointerup',     pointerUp);
+  host.addEventListener('pointercancel', () => { isDrag = false; ptrStart = null; });
+
+  /* Email overlay wiring */
+  const emailInp = document.getElementById('email-inp');
+  const startBtn = document.getElementById('start-btn');
+  const emailChk = document.getElementById('email-chk');
+  const emailErr = document.getElementById('email-err');
+
+  overlay.addEventListener('pointerdown', (e) => e.stopPropagation());
+  overlay.addEventListener('pointermove',  (e) => e.stopPropagation());
+  overlay.addEventListener('pointerup',    (e) => e.stopPropagation());
+
+  let emailTouched = false;
+
+  function refreshEmailUI() {
+    const v = emailInp.value.trim(), ok = EMAIL_RE.test(v);
+    emailInp.className = 'email-input' + (v.length ? (ok ? ' valid' : ' err') : '');
+    emailChk.textContent = v.length ? (ok ? '✓' : '✗') : '';
+    emailChk.style.color = ok ? COLOR.orange : COLOR.red;
+    startBtn.disabled = !ok;
+    emailErr.style.display = (emailTouched && v.length && !ok) ? 'block' : 'none';
+  }
+
+  emailInp.addEventListener('input', refreshEmailUI);
+  emailInp.addEventListener('blur',  () => { emailTouched = true; refreshEmailUI(); });
+  emailInp.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitEmail(); });
+  startBtn.addEventListener('click', submitEmail);
+
+  function submitEmail() {
+    const v = emailInp.value.trim();
+    if (!EMAIL_RE.test(v)) return;
+    onEmailCaptured(v);
+    phase = 'done'; gameStarted = true;
+    overlay.classList.remove('show');
+    resumeAudio();
+    startTimer();
+  }
+
+  /* Register cleanup */
+  _engine = {
+    runner, render, engine,
+    cleanup: () => {
+      if (timerID)   { clearInterval(timerID);  timerID = null; }
+      if (respawnID) { clearTimeout(respawnID); respawnID = null; }
+    },
+  };
+}
+
+/* ════════════════════════════════════════════════════════════════
+   WIN SCREEN
+   ════════════════════════════════════════════════════════════════ */
+function mountWin(host) {
+  host.className = 'result-screen screen-fade-in';
+  const vc = APP.voucherCode;
+  host.innerHTML = `
+    <div style="position:absolute;inset:0;background:radial-gradient(ellipse 80% 60% at 50% 40%,rgba(255,95,31,0.07) 0%,transparent 70%);pointer-events:none"></div>
+    <div class="result-inner">
+      <div class="result-icon" style="filter:drop-shadow(0 0 16px rgba(255,95,31,0.8))">🏆</div>
+      <div style="text-align:center">
+        <h1 style="font-size:clamp(54px,16vw,83px);font-weight:900;letter-spacing:0.06em;line-height:1;
+          color:${COLOR.orange};text-shadow:${neonGlow(COLOR.orange)};text-transform:uppercase">CHAMPION!</h1>
+        <p style="margin-top:10px;font-size:clamp(11px,3vw,14px);font-weight:700;letter-spacing:0.16em;
+          color:#fff;text-transform:uppercase;opacity:0.8">YOU CONQUERED THE ASPHALT!</p>
+      </div>
+      <div class="result-divider" style="background:linear-gradient(to right,transparent,rgba(255,95,31,0.8),transparent)"></div>
+      <div class="score-group">
+        <span class="score-lbl">Final Score</span>
+        <span class="score-big" style="color:${COLOR.red};text-shadow:${neonGlow(COLOR.red)}">${APP.finalScore}</span>
+        <span class="score-sub">Target: ${CFG.winScore} pts</span>
+      </div>
+      <div class="voucher-box" style="border:1px solid rgba(255,95,31,0.33);box-shadow:0 0 24px rgba(255,95,31,0.11)">
+        <p style="font-size:12px;font-weight:900;letter-spacing:0.2em;color:${COLOR.orange};text-transform:uppercase;text-shadow:0 0 10px rgba(255,95,31,0.53)">
+          ✅ VOUCHER SENT! CHECK YOUR INBOX.
+        </p>
+        <p style="font-size:24px;font-weight:900;letter-spacing:0.12em;color:#fff;text-shadow:${neonGlow(COLOR.orange)};font-variant-numeric:tabular-nums">${vc}</p>
+        <p style="font-size:11px;color:rgba(255,255,255,0.45);line-height:1.5">Show this code to staff to claim your reward.</p>
+      </div>
+      <button id="pa-btn" class="cta-btn"
+        style="background:linear-gradient(135deg,${COLOR.orange},${COLOR.red});color:#fff;box-shadow:0 0 18px rgba(255,95,31,0.38)">
+        PLAY AGAIN
+      </button>
+      <a href="https://www.aibizservice.com" target="_blank" rel="noopener noreferrer" class="b2b-link">
+        Custom AI for your business?
+        <span style="color:${COLOR.orange};font-weight:700"> Visit www.aibizservice.com</span>
+      </a>
+    </div>
+    <p class="brand-footer">Project SXC</p>`;
+
+  document.getElementById('pa-btn').addEventListener('click', onPlayAgain);
+}
+
+/* ════════════════════════════════════════════════════════════════
+   LOSS SCREEN
+   ════════════════════════════════════════════════════════════════ */
+function mountLoss(host) {
+  host.className = 'result-screen screen-fade-in';
+  host.innerHTML = `
+    <div style="position:absolute;inset:0;background:radial-gradient(ellipse 80% 60% at 50% 40%,rgba(206,17,65,0.08) 0%,transparent 68%);pointer-events:none"></div>
+    <div class="result-inner">
+      <div class="result-icon">💀</div>
+      <div style="text-align:center">
+        <h1 style="font-size:clamp(48px,14vw,72px);font-weight:900;letter-spacing:0.1em;line-height:1;
+          color:${COLOR.red};text-shadow:${neonGlow(COLOR.red)};text-transform:uppercase">GAME OVER</h1>
+        <p style="margin-top:10px;font-size:clamp(12px,3.2vw,14px);font-weight:700;letter-spacing:0.18em;
+          color:#fff;text-transform:uppercase;opacity:0.6">TIME'S UP</p>
+      </div>
+      <div class="result-divider" style="background:linear-gradient(to right,transparent,rgba(206,17,65,0.8),transparent)"></div>
+      <div class="score-group">
+        <span class="score-lbl">Your Score</span>
+        <span class="score-big" style="color:${COLOR.red};text-shadow:${neonGlow(COLOR.red)}">${APP.finalScore}</span>
+        <span class="score-sub">Needed ${CFG.winScore} pts to win</span>
+      </div>
+      <button id="ta-btn" class="cta-btn"
+        style="background:${COLOR.orange};color:#fff;box-shadow:0 0 18px rgba(255,95,31,0.38)">
+        TRY AGAIN
+      </button>
+      <a href="https://www.aibizservice.com" target="_blank" rel="noopener noreferrer" class="b2b-link">
+        Custom AI for your business?
+        <span style="color:${COLOR.orange};font-weight:700"> Visit www.aibizservice.com</span>
+      </a>
+    </div>
+    <p class="brand-footer">Project SXC</p>`;
+
+  document.getElementById('ta-btn').addEventListener('click', onPlayAgain);
+}
+
+/* ════════════════════════════════════════════════════════════════
+   COOLDOWN SCREEN
+   ════════════════════════════════════════════════════════════════ */
+function mountCooldown(host) {
+  host.className = 'result-screen screen-fade-in';
+  host.innerHTML = `
+    <div style="position:absolute;inset:0;background:radial-gradient(ellipse 80% 55% at 50% 40%,rgba(206,17,65,0.06) 0%,transparent 70%);pointer-events:none"></div>
+    <div class="result-inner">
+      <div class="result-icon" style="filter:drop-shadow(0 0 20px rgba(255,95,31,0.8))">🏆</div>
+      <div style="text-align:center">
+        <h1 style="font-size:clamp(42px,14vw,64px);font-weight:900;letter-spacing:0.06em;line-height:1;
+          text-transform:uppercase;color:${COLOR.orange};text-shadow:${neonGlow(COLOR.orange)};margin:0">CHAMPION!</h1>
+        <p style="margin-top:12px;font-size:clamp(12px,3.2vw,15px);font-weight:700;
+          letter-spacing:0.08em;line-height:1.6;color:rgba(255,255,255,0.72);text-transform:uppercase">
+          You've already claimed your prize for today.<br>The court resets for you in
+        </p>
+      </div>
+      <div class="cd-box">
+        <div class="cd-unit">
+          <span class="cd-num" id="cd-big" style="color:${COLOR.red};text-shadow:${neonGlow(COLOR.red)}">--</span>
+          <span class="cd-label" id="cd-big-lbl">Hours</span>
+        </div>
+        <span class="cd-colon">:</span>
+        <div class="cd-unit">
+          <span class="cd-num" id="cd-sm" style="color:${COLOR.red};text-shadow:${neonGlow(COLOR.red)}">--</span>
+          <span class="cd-label" id="cd-sm-lbl">Minutes</span>
+        </div>
+      </div>
+      <div class="result-divider" style="background:linear-gradient(to right,transparent,rgba(255,95,31,0.33),transparent)"></div>
+      <a href="https://www.aibizservice.com" target="_blank" rel="noopener noreferrer"
+        style="display:flex;flex-direction:column;align-items:center;gap:4px;text-decoration:none;
+          width:100%;padding:18px 20px;background:rgba(255,255,255,0.03);
+          border:1px solid rgba(255,255,255,0.08)">
+        <span style="font-size:10px;letter-spacing:0.1em;color:rgba(255,255,255,0.4);text-transform:uppercase">Custom AI for your business?</span>
+        <span style="font-size:14px;font-weight:900;letter-spacing:0.18em;text-transform:uppercase;
+          color:${COLOR.orange};text-shadow:0 0 10px rgba(255,95,31,0.4)">VISIT AIBIZSERVICE.COM →</span>
+      </a>
+    </div>
+    <p class="brand-footer">Project SXC</p>`;
+
+  function tick() {
+    const { locked, msLeft } = store.getCooldown();
+    if (!locked) { onCooldownExpired(); return; }
+    const total = Math.max(0, Math.ceil(msLeft / 1000));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    let big, bigLbl, sm, smLbl;
+    if (h > 0) { big = h; bigLbl = h === 1 ? 'Hour' : 'Hours'; sm = m; smLbl = m === 1 ? 'Minute' : 'Minutes'; }
+    else        { big = m; bigLbl = m === 1 ? 'Minute' : 'Minutes'; sm = s; smLbl = s === 1 ? 'Second' : 'Seconds'; }
+    const b = document.getElementById('cd-big'),  bl = document.getElementById('cd-big-lbl');
+    const n = document.getElementById('cd-sm'),   nl = document.getElementById('cd-sm-lbl');
+    if (b) b.textContent = String(big).padStart(2, '0');
+    if (n) n.textContent = String(sm).padStart(2, '0');
+    if (bl) bl.textContent = bigLbl;
+    if (nl) nl.textContent = smLbl;
+  }
+
+  tick();
+  const cdID = setInterval(() => {
+    if (document.getElementById('cd-big')) tick(); else clearInterval(cdID);
+  }, 1000);
+}
+
+/* ════════════════════════════════════════════════════════════════
+   ROOT RENDERER
+   ════════════════════════════════════════════════════════════════ */
+function renderRoot() {
+  destroyEngine();
+  const root = document.getElementById('root');
+  root.innerHTML  = '';
+  root.className  = '';
+  root.style.cssText = 'width:100%;height:100dvh;position:relative;';
+
+  if      (APP.screen === 'cooldown') { mountCooldown(root); }
+  else if (APP.screen === 'win')      { mountWin(root);      }
+  else if (APP.screen === 'loss')     { mountLoss(root);     }
+  else {
+    root.style.overflow   = 'hidden';
+    root.style.touchAction = 'none';
+    root.style.userSelect  = 'none';
+    APP.sessionEmail = store.getEmail();
+    mountGame(root, APP.sessionEmail);
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   BOOT
+   ════════════════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', () => {
+  APP.screen = store.getCooldown().locked ? 'cooldown' : 'game';
+  renderRoot();
+});
+</script>
+</body>
 </html>
