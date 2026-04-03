@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="theme-color" content="#000000" />
-  <title>Project SXC — Swipe to Shoot V7</title>
+  <title>Project SXC — Swipe to Shoot</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
@@ -14,9 +14,14 @@
     }
     #root { width: 100%; height: 100dvh; position: relative; }
 
+    /* ── Animations ── */
+    @keyframes screenIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+    .fade-in { animation: screenIn 0.5s cubic-bezier(0.22,1,0.36,1) both; }
+
     /* ── Game layers ── */
     .layer { position: absolute; inset: 0; display: block; }
 
+    /* Stadium background image */
     #stadium-bg {
       width: 100%; height: 100%; object-fit: cover; object-position: center top;
       filter: blur(10px) brightness(0.28) saturate(0.6);
@@ -24,16 +29,20 @@
       pointer-events: none; z-index: 1;
     }
 
-    /* Court floor — FIXED: No more 3D stretching */
+    /* Court floor — perspective-warped asphalt */
     #court-floor {
       position: absolute;
-      left: 0; right: 0;
-      top: 45%; bottom: 0;
+      left: -20%; right: -20%;
+      top: 52%; bottom: 0;
+      transform-origin: top center;
+      transform: perspective(320px) rotateX(58deg);
+      overflow: hidden;
       pointer-events: none;
       z-index: 3;
     }
     #court-floor-img {
       position: absolute; inset: 0;
+      /* FIX: cover + center so the texture is never distorted or stretched */
       background-image: url('./court_floor.png');
       background-size: cover;
       background-position: center bottom;
@@ -43,6 +52,10 @@
       position: absolute; inset: 0;
       background: linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.55) 100%);
     }
+    #floor-fade-far {
+      position: absolute; inset: 0;
+      background: linear-gradient(to top, transparent 60%, rgba(0,0,0,0.72) 100%);
+    }
 
     /* ── HUD ── */
     #hud {
@@ -51,13 +64,27 @@
     }
     .brand-bar {
       background: rgba(0,0,0,0.90);
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 6px 16px;
+    }
+    .brand-bar span { font-size: 11px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; color: #666; }
+    .title-bar {
+      background: rgba(0,0,0,0.88); position: relative;
       display: flex; align-items: center; justify-content: center; padding: 6px 16px;
     }
-    .brand-bar span { font-size: 11px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; color: #888; }
-    .stat-row { display: flex; background: rgba(0,0,0,0.8); border-bottom: 2px solid #CE1141; }
-    .stat-card { flex: 1; padding: 8px 16px; display: flex; flex-direction: column; align-items: center; }
-    .stat-label { font-size: 9px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; color: #fff; }
-    .stat-value { font-size: 32px; font-weight: 900; line-height: 1; color: #FF5F1F; }
+    .tagline { font-size: 20px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; color: #ff2a2a; text-shadow: 0 0 4px #ff2020, 0 0 12px #ff202066; }
+    .hs-box { position: absolute; right: 16px; display: flex; flex-direction: column; align-items: flex-end; }
+    .hs-lbl { font-size: 9px; font-weight: 600; letter-spacing: .2em; text-transform: uppercase; color: #555; }
+    .hs-val { font-size: 14px; font-weight: 900; font-variant-numeric: tabular-nums; color: #FF5F1F; }
+    .red-line { height: 2px; background: #CE1141; }
+    .stat-row { display: flex; }
+    .stat-card { flex: 1; padding: 8px 16px; background: rgba(8,8,8,0.86); border-bottom: 1px solid #2a2a2a; }
+    .stat-card.left { border-left: 4px solid #CE1141; }
+    .stat-card.right { border-right: 4px solid #CE1141; border-left: 1px solid #222; align-items: flex-end; display: flex; flex-direction: column; }
+    .stat-label { font-size: 9px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; }
+    .stat-value { font-size: 36px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; font-family: monospace; }
+    .timer-track { height: 2px; background: #111; }
+    .timer-fill { height: 100%; transition: width 1s linear; }
 
     /* ── Score flash ── */
     #score-flash {
@@ -66,7 +93,7 @@
       pointer-events: none; z-index: 20; opacity: 0; transition: opacity .12s;
     }
     #score-flash.show { opacity: 1; }
-    #score-flash span { font-size: 72px; font-weight: 900; color: #FF5F1F; text-shadow: 0 0 15px #FF5F1F; }
+    #score-flash span { font-size: 72px; font-weight: 900; color: #FF5F1F; text-shadow: 0 0 4px #FF5F1F, 0 0 20px #FF5F1F; }
 
     /* ── Shoot hint ── */
     #hint {
@@ -74,32 +101,67 @@
       display: flex; flex-direction: column; align-items: center; gap: 8px;
       pointer-events: none; z-index: 9;
     }
-    #hint p { color: #fff; font-size: 24px; font-weight: 900; text-transform: uppercase; font-style: italic; text-shadow: 0 2px 10px #000; }
+    #hint .hw { color: #fff; font-size: 28px; font-weight: 900; text-transform: uppercase; font-style: italic; text-shadow: 0 2px 16px rgba(0,0,0,.95); }
+    #hint .hr { color: #ff2a2a; font-size: 28px; font-weight: 900; text-transform: uppercase; font-style: italic; text-shadow: 0 0 4px #ff2020, 0 0 12px #ff202066; }
 
     /* ── Email overlay ── */
     #email-overlay {
       position: fixed; inset: 0; z-index: 60;
-      background: rgba(0,0,0,0.85); backdrop-filter: blur(6px);
+      background: rgba(0,0,0,0.82); backdrop-filter: blur(6px);
       display: none; align-items: center; justify-content: center; padding: 24px;
     }
     #email-overlay.show { display: flex; }
     .email-card {
       width: 100%; max-width: 340px;
-      background: #111; border: 2px solid #FF5F1F;
-      padding: 30px; display: flex; flex-direction: column; align-items: center; gap: 15px;
+      background: linear-gradient(160deg,#1a0900,#100008);
+      border: 1.5px solid rgba(255,95,31,0.33);
+      box-shadow: 0 0 40px rgba(255,95,31,0.13), 0 8px 48px rgba(0,0,0,0.8);
+      padding: 32px 28px 28px;
+      display: flex; flex-direction: column; align-items: center; gap: 16px;
     }
-    .email-card h2 { color: #FF5F1F; text-transform: uppercase; }
-    .email-input { width: 100%; padding: 12px; background: #222; border: 1px solid #444; color: #fff; }
-    .start-btn { width: 100%; padding: 14px; background: #FF5F1F; color: #fff; font-weight: 900; border: none; cursor: pointer; }
+    .email-card h2 { font-size: 21px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; color: #FF5F1F; text-shadow: 0 0 12px rgba(255,95,31,.53); text-align: center; margin: 0; }
+    .email-card p { margin-top: 8px; font-size: 12px; line-height: 1.5; color: rgba(255,255,255,.65); text-align: center; }
+    .email-wrap { width: 100%; position: relative; }
+    .email-input { width: 100%; padding: 12px 36px 12px 14px; background: rgba(255,255,255,.06); border: 1.5px solid rgba(255,255,255,.18); color: #fff; font-size: 15px; outline: none; font-family: inherit; }
+    .email-input.valid { border-color: #FF5F1F; box-shadow: 0 0 10px rgba(255,95,31,.2); }
+    .email-input.err   { border-color: #CE1141; }
+    .email-chk { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-weight: 700; font-size: 14px; }
+    .email-errmsg { font-size: 12px; color: #CE1141; align-self: flex-start; display: none; }
+    .start-btn { width: 100%; padding: 14px 0; border: none; font-size: 13px; font-weight: 900; letter-spacing: .24em; text-transform: uppercase; font-family: inherit; cursor: pointer; transition: all .2s; }
+    .start-btn:disabled { background: rgba(255,255,255,.07); color: rgba(255,255,255,.22); cursor: not-allowed; }
+    .start-btn:not(:disabled) { background: linear-gradient(135deg,#FF5F1F,#CE1141); color: #fff; box-shadow: 0 0 20px rgba(255,95,31,.33); }
+    .overlay-b2b { font-size: 11px; color: rgba(255,255,255,.3); text-decoration: none; text-align: center; line-height: 1.5; border-bottom: 1px solid rgba(255,255,255,.12); padding-bottom: 2px; }
+
+    /* ── In-game prize toast ── */
+    @keyframes toastSlideIn {
+      from { opacity: 0; transform: translateX(-50%) translateY(-12px) scale(0.92); }
+      to   { opacity: 1; transform: translateX(-50%) translateY(0)     scale(1);    }
+    }
 
     /* ── Result screens ── */
     .result-screen {
       position: fixed; inset: 0; z-index: 100; background: #000;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      padding: 30px; text-align: center;
+      padding: 32px 24px; overflow: hidden;
     }
-    .result-screen h1 { font-size: 48px; color: #FF5F1F; margin-bottom: 20px; }
-    .cta-btn { padding: 15px 40px; background: #FF5F1F; color: #fff; border: none; font-weight: 900; margin-top: 20px; }
+    .result-inner { position: relative; width: 100%; max-width: 380px; display: flex; flex-direction: column; align-items: center; gap: 22px; }
+    .result-icon { font-size: 64px; line-height: 1; }
+    .result-divider { width: 100%; height: 1px; }
+    .score-grp { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .score-lbl { font-size: 10px; font-weight: 600; letter-spacing: .22em; text-transform: uppercase; color: #888; }
+    .score-big { font-size: 72px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
+    .score-sub { font-size: 10px; letter-spacing: .15em; color: #888; text-transform: uppercase; }
+    .voucher-box { width: 100%; padding: 18px 20px; background: rgba(255,255,255,.04); text-align: center; display: flex; flex-direction: column; gap: 8px; }
+    .cta-btn { width: 100%; padding: 16px; border: none; font-size: 14px; font-weight: 900; letter-spacing: .22em; text-transform: uppercase; cursor: pointer; font-family: inherit; }
+    .b2b-link { font-size: 11px; color: rgba(255,255,255,.35); text-decoration: none; text-align: center; line-height: 1.6; }
+    .brand-footer { position: absolute; bottom: 20px; font-size: 10px; letter-spacing: .22em; color: #444; text-transform: uppercase; }
+
+    /* ── Cooldown ── */
+    .cd-box { display: flex; align-items: flex-start; justify-content: center; gap: 8px; padding: 20px 32px; width: 100%; text-align: center; background: rgba(255,255,255,.03); border: 1.5px solid rgba(255,95,31,.27); box-shadow: 0 0 30px rgba(255,95,31,.09); }
+    .cd-unit { display: flex; flex-direction: column; align-items: center; min-width: 72px; }
+    .cd-num { font-size: clamp(48px,16vw,80px); font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
+    .cd-lbl { font-size: 9px; letter-spacing: .18em; color: #888; text-transform: uppercase; margin-top: 4px; }
+    .cd-colon { font-size: clamp(38px,12vw,64px); font-weight: 900; line-height: 1; color: #FF5F1F; opacity: .6; align-self: flex-start; padding-top: .05em; }
   </style>
 </head>
 <body>
@@ -110,236 +172,907 @@
 <script>
 'use strict';
 
+/* ═══════════════════════════════════════════════
+   CONFIG
+═══════════════════════════════════════════════ */
 const CFG = {
-  timerSec: 42,
-  winScore: 10,
-  ballR: 58,
-  rimHW: 92,
-  hoopRimYFrac: 0.635,
-  hoopRimWFrac: 0.395,
-  cooldownMs: 86400000
+  timerSec:      42,
+  pointsPerMake: 2,
+  winScore:      10,
+  ballR:         58,   // enlarged — roughly 1/3 the visual backboard width
+  rimHW:         92,   // half-width of rim opening (physics)
+  netH:          100,
+  rimT:          10,
+  cooldownMs:    86_400_000,
+  // Hoop image calibration (matches hoop_structure PNG)
+  hoopRimYFrac:  0.635, // rim sits 63.5 % down the hoop image
+  hoopRimWFrac:  0.395, // rim opening is 39.5 % of image width
 };
-
-const EJ = { svc: 'service_mvh5n2o', tpl: 'template_v9adm4b', pub: 'rah1sIloUvqBRtIVx' };
+const RED    = '#CE1141';
+const ORANGE = '#FF5F1F';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/* EmailJS — edit these if you change accounts */
+const EJ = { svc: 'service_mvh5n2o', tpl: 'template_v9adm4b', pub: 'rah1sIloUvqBRtIVx' };
+
+/* ═══════════════════════════════════════════════
+   STORAGE
+═══════════════════════════════════════════════ */
 const store = {
-  getEmail: () => sessionStorage.getItem('sxc_email'),
-  saveEmail: (e) => sessionStorage.setItem('sxc_email', e),
-  getCooldown: () => {
-    const raw = localStorage.getItem('sxc_win');
-    if (!raw) return false;
-    const { timestamp } = JSON.parse(raw);
-    return (Date.now() - timestamp) < CFG.cooldownMs;
+  getEmail:   ()  => { try { return sessionStorage.getItem('sxc_email'); } catch { return null; } },
+  saveEmail:  (e) => { try { sessionStorage.setItem('sxc_email', e); } catch {} },
+  clearEmail: ()  => { try { sessionStorage.removeItem('sxc_email'); } catch {} },
+  getCooldown() {
+    try {
+      const raw = localStorage.getItem('sxc_win');
+      if (!raw) return { locked: false, msLeft: 0 };
+      const { timestamp } = JSON.parse(raw);
+      const msLeft = CFG.cooldownMs - (Date.now() - timestamp);
+      if (msLeft <= 0) { localStorage.removeItem('sxc_win'); return { locked: false, msLeft: 0 }; }
+      return { locked: true, msLeft };
+    } catch { return { locked: false, msLeft: 0 }; }
   },
-  recordWin: () => localStorage.setItem('sxc_win', JSON.stringify({ timestamp: Date.now() }))
+  recordPlay: (email) => {
+    try { localStorage.setItem('sxc_win', JSON.stringify({ email, timestamp: Date.now() })); } catch {}
+  },
 };
 
-let APP = { screen: 'game', score: 0, timeLeft: CFG.timerSec, email: null };
+/* ═══════════════════════════════════════════════
+   EMAIL
+═══════════════════════════════════════════════ */
+function genCode() { return 'AI-' + Math.floor(100000 + Math.random() * 900000); }
 
-/* ── HELPER: IMAGE LOADER ── */
+async function sendEmail({ toEmail, code, score, isWin }) {
+  const subject = isWin
+    ? '🏆 You Won! Claim Your Asphalt & Iron Prize'
+    : 'Thanks for Playing Asphalt & Iron!';
+  const message = isWin
+    ? `CHAMPION! You scored ${score} points and won! Show code ${code} to claim your prize. Custom AI for your business? Visit www.aibizservice.com`
+    : `You scored ${score} points — great run! Court resets in 24 hours. Custom AI? Visit www.aibizservice.com`;
+  try {
+    await emailjs.send(EJ.svc, EJ.tpl,
+      { to_email: toEmail, voucher_code: code, score: String(score), is_winner: isWin ? 'true' : 'false', subject, message },
+      { publicKey: EJ.pub });
+  } catch (err) { console.error('[email]', err); }
+}
+
+/* ═══════════════════════════════════════════════
+   AUDIO — Web Audio synthesis
+═══════════════════════════════════════════════ */
+let _ac = null;
+function getAC() {
+  if (!_ac) _ac = new (window.AudioContext || window.webkitAudioContext)();
+  return _ac;
+}
+function resumeAudio() { try { const a = getAC(); if (a.state === 'suspended') a.resume(); } catch {} }
+function playSound(type) {
+  try {
+    const ac = getAC();
+    if (ac.state !== 'running') return;
+    const osc = ac.createOscillator(), gain = ac.createGain();
+    osc.connect(gain); gain.connect(ac.destination);
+    const t = ac.currentTime;
+    if (type === 'rim') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(260, t); osc.frequency.exponentialRampToValueAtTime(90, t + 0.35);
+      gain.gain.setValueAtTime(0.28, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+      osc.start(t); osc.stop(t + 0.4);
+    } else {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(110, t); osc.frequency.exponentialRampToValueAtTime(42, t + 0.18);
+      gain.gain.setValueAtTime(0.22, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+      osc.start(t); osc.stop(t + 0.22);
+    }
+  } catch {}
+}
+
+/* ═══════════════════════════════════════════════
+   IMAGE LOADER
+═══════════════════════════════════════════════ */
 function loadImg(src) {
   return new Promise(resolve => {
     const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
+    img.onload  = () => resolve(img);
+    img.onerror = () => resolve(null);   // graceful: returns null if missing
     img.src = src;
   });
 }
 
-/* ── GAME ENGINE ── */
-async function mountGame(host) {
-  const W = host.offsetWidth, H = host.offsetHeight;
-  const rimX = W / 2, rimY = H * 0.42;
-  const spawnX = W / 2, spawnY = H - CFG.ballR - 20;
+/* ═══════════════════════════════════════════════
+   CANVAS HELPERS
+═══════════════════════════════════════════════ */
+function neonGlow(c) {
+  return `0 0 4px ${c}, 0 0 12px ${c}, 0 0 24px ${c}99, 0 0 48px ${c}44`;
+}
 
-  const [ballImg, hoopImg, stadiumImg] = await Promise.all([
-    loadImg('./ball.png'), loadImg('./hoop.png'), loadImg('./stadium.png')
-  ]);
+/* Chain-link fence layer (blurred canvas) */
+function drawFence(ctx, w, h) {
+  ctx.fillStyle = '#111009';
+  ctx.fillRect(0, 0, w, h);
+  const amb = ctx.createRadialGradient(w/2, h*0.4, 20, w/2, h*0.4, w*0.8);
+  amb.addColorStop(0, 'rgba(40,20,10,0.6)'); amb.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = amb; ctx.fillRect(0, 0, w, h);
+  const step = 20, sweep = h + step * 6;
+  ctx.strokeStyle = 'rgba(72,65,58,0.85)'; ctx.lineWidth = 1.3;
+  for (let i = -6; i * step < w + sweep; i++) {
+    const sx = i * step;
+    ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx + sweep, sweep); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx - sweep, sweep); ctx.stroke();
+  }
+  const vig = ctx.createRadialGradient(w/2, h*0.35, h*0.05, w/2, h*0.35, w*0.9);
+  vig.addColorStop(0, 'rgba(0,0,0,0)'); vig.addColorStop(1, 'rgba(0,0,0,0.72)');
+  ctx.fillStyle = vig; ctx.fillRect(0, 0, w, h);
+}
 
-  host.innerHTML = `
-    <img src="./stadium.png" id="stadium-bg">
-    <div id="court-floor"><div id="court-floor-img"></div><div id="floor-fade-near"></div></div>
-    <canvas id="game-cvs" width="${W}" height="${H}" style="position:absolute; inset:0; z-index:5;"></canvas>
-    <div id="hud">
-      <div class="brand-bar"><span>PROJECT SXC — MASTER V7</span></div>
-      <div class="stat-row">
-        <div class="stat-card"><span>SCORE</span><span id="score-val">0</span></div>
-        <div class="stat-card"><span>TIME</span><span id="timer-val">0:42</span></div>
-      </div>
-    </div>
-    <div id="hint"><p>SWIPE UP TO SHOOT</p></div>
-    <div id="score-flash"><span>+2</span></div>
-    <div id="email-overlay">
-      <div class="email-card">
-        <h2>Enter to Play</h2>
-        <input type="email" id="email-inp" class="email-input" placeholder="you@example.com">
-        <button id="start-btn" class="start-btn">START GAME</button>
-      </div>
-    </div>
-  `;
+/* Home-base landing ring */
+function drawHomeBase(ctx, cx, cy, r) {
+  ctx.strokeStyle = 'rgba(255,95,31,0.35)'; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.arc(cx, cy, r * 1.6, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,95,31,0.15)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(cx, cy, r * 2.2, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,95,31,0.12)';
+  ctx.beginPath(); ctx.arc(cx, cy, r * 0.4, 0, Math.PI * 2); ctx.fill();
+}
 
-  const ctx = document.getElementById('game-cvs').getContext('2d');
-  const engine = Matter.Engine.create(), runner = Matter.Runner.create();
-  
-  // Physics Bodies
-  let ball = Matter.Bodies.circle(spawnX, spawnY, CFG.ballR, { restitution: 0.8, friction: 0.05, label: 'ball' });
-  const ground = Matter.Bodies.rectangle(W/2, H+50, W*2, 100, { isStatic: true });
-  const lRim = Matter.Bodies.circle(rimX - CFG.rimHW, rimY, 5, { isStatic: true, label: 'rim' });
-  const rRim = Matter.Bodies.circle(rimX + CFG.rimHW, rimY, 5, { isStatic: true, label: 'rim' });
-  const sensor = Matter.Bodies.rectangle(rimX, rimY + 40, CFG.rimHW, 10, { isStatic: true, isSensor: true, label: 'goal' });
+/* Draw hoop PNG — uses original React calibration constants */
+function drawHoopImage(ctx, hoopImg, backboardImg, rimX, rimY, hw) {
+  // Separate backboard.png (optional — user can drop it in the same folder)
+  if (backboardImg) {
+    const bbScale = (hw * 3.0) / backboardImg.naturalWidth;
+    const bbW = backboardImg.naturalWidth  * bbScale;
+    const bbH = backboardImg.naturalHeight * bbScale;
+    ctx.drawImage(backboardImg, rimX - bbW / 2, rimY - bbH - CFG.rimT * 2, bbW, bbH);
+  }
+  // Main hoop image (rim + net; includes backboard if no separate backboard.png)
+  if (hoopImg) {
+    const scale = (hw * 2) / (hoopImg.naturalWidth * CFG.hoopRimWFrac);
+    const imgW  = hoopImg.naturalWidth  * scale;
+    const imgH  = hoopImg.naturalHeight * scale;
+    ctx.drawImage(hoopImg, rimX - imgW / 2, rimY - CFG.hoopRimYFrac * imgH, imgW, imgH);
+  }
+}
 
-  Matter.Body.setStatic(ball, true);
-  Matter.World.add(engine.world, [ball, ground, lRim, rRim, sensor]);
+/* Draw basketball PNG (clipped circle + edge shadow, rotates with physics) */
+function drawBallImage(ctx, ballImg, x, y, r, angle) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.clip();
 
-  let isDrag = false, ballInPlay = false, ptrStart = null, gameStarted = false, timerInterval = null;
-
-  function resetBall() {
-    ballInPlay = false;
-    Matter.Body.setStatic(ball, true);
-    Matter.Body.setPosition(ball, { x: spawnX, y: spawnY });
-    Matter.Body.setVelocity(ball, { x: 0, y: 0 });
-    Matter.Body.setAngularVelocity(ball, 0);
+  if (ballImg) {
+    ctx.drawImage(ballImg, -r, -r, r * 2, r * 2);
+  } else {
+    // Gradient fallback if image not yet loaded
+    const g = ctx.createRadialGradient(-r*.25, -r*.3, 0, 0, 0, r);
+    g.addColorStop(0, '#FFA05A'); g.addColorStop(0.6, '#E06018'); g.addColorStop(1, '#4A1200');
+    ctx.fillStyle = g; ctx.fillRect(-r, -r, r*2, r*2);
   }
 
-  // Input Handling
-  host.addEventListener('pointerdown', (e) => {
-    if (ballInPlay || document.getElementById('email-overlay').classList.contains('show')) return;
-    isDrag = true;
-    ptrStart = { x: e.clientX, y: e.clientY };
-  });
+  // Edge vignette to give the ball a spherical look
+  const e = ctx.createRadialGradient(0, 0, r*.55, 0, 0, r);
+  e.addColorStop(0, 'rgba(0,0,0,0)'); e.addColorStop(1, 'rgba(0,0,0,0.35)');
+  ctx.fillStyle = e; ctx.fillRect(-r, -r, r*2, r*2);
+  ctx.restore();
+}
 
-  host.addEventListener('pointermove', (e) => {
-    if (!isDrag) return;
-    Matter.Body.setPosition(ball, { x: e.clientX, y: spawnY });
-  });
+/* ═══════════════════════════════════════════════
+   APP STATE
+═══════════════════════════════════════════════ */
+const APP = {
+  screen: 'game',
+  sessionEmail: null,
+  finalScore: 0,
+  voucherCode: '',
+};
 
-  host.addEventListener('pointerup', (e) => {
-    if (!isDrag) return;
-    isDrag = false;
-    const dy = e.clientY - ptrStart.y;
-    const dx = e.clientX - ptrStart.x;
+/* ═══════════════════════════════════════════════
+   ENGINE LIFECYCLE
+═══════════════════════════════════════════════ */
+let _eng = null; // { engine, runner, rafId, cleanup }
 
-    // THE V7 UNLOCKED TRIGGER
-    if (dy < -15) {
-      if (!gameStarted) startTimer();
-      document.getElementById('hint').style.display = 'none';
-      
-      Matter.Body.setStatic(ball, false);
-      ballInPlay = true;
+function destroyEngine() {
+  if (!_eng) return;
+  if (_eng.cleanup) _eng.cleanup();
+  if (_eng.rafId)   cancelAnimationFrame(_eng.rafId);
+  try { Matter.Runner.stop(_eng.runner); }  catch {}
+  try { Matter.World.clear(_eng.engine.world, false); } catch {}
+  try { Matter.Engine.clear(_eng.engine); }  catch {}
+  _eng = null;
+}
 
-      // POWER MATH (Based on Distance)
-      const power = Math.min(1.2, Math.abs(dy) / 300);
-      const vy = -7 - (power * 9);
-      const vx = (dx * 0.03) + (rimX - ball.position.x) * 0.015;
+/* ═══════════════════════════════════════════════
+   NAVIGATION
+═══════════════════════════════════════════════ */
+function go(screen) { APP.screen = screen; renderRoot(); }
 
-      Matter.Body.setVelocity(ball, { x: vx, y: vy });
-      Matter.Body.setAngularVelocity(ball, vx * 0.1);
-      setTimeout(resetBall, 2500);
-    } else {
-      resetBall();
+function onEmailCaptured(email) {
+  APP.sessionEmail = email;
+  store.saveEmail(email);
+  fetch('./api/entries', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ email }) }).catch(() => {});
+}
+
+function onGameEnd(score, isWin) {
+  APP.finalScore = score;
+  if (isWin) {
+    // Only send prize email + record 24h lock on a WIN
+    const email = APP.sessionEmail || store.getEmail();
+    const code  = genCode();
+    APP.voucherCode = code;
+    if (email) {
+      // store.recordPlay(email); // TESTING: not writing the 24h lock to localStorage
+      sendEmail({ toEmail: email, code, score, isWin: true });
     }
-  });
+    // Keep session email intact so Play Again skips the gate
+  }
+}
 
-  // Goal Detection
+function onPlayAgain() {
+  // Always go straight back to the game — no cooldown wall
+  go('game');
+}
+
+/* ═══════════════════════════════════════════════
+   GAME SCREEN
+═══════════════════════════════════════════════ */
+async function mountGame(host, initialEmail) {
+  const W = host.offsetWidth;
+  const H = host.offsetHeight;
+  const BR = CFG.ballR, HW = CFG.rimHW, NH = CFG.netH, RT = CFG.rimT;
+  const spawnX = Math.round(W / 2);
+  const spawnY = H - BR - 2;
+  const rimX   = W / 2;
+  const rimY   = H * 0.42;
+
+  /* Load images (all graceful — null if missing) */
+  const [ballImg, hoopImg, backboardImg] = await Promise.all([
+    loadImg('./ball.png'),
+    loadImg('./hoop.png'),
+    loadImg('./backboard.png'),  // optional — provide your own backboard.png
+  ]);
+
+  /* ── DOM STRUCTURE ── */
+
+  // Black base
+  const base = document.createElement('div');
+  Object.assign(base.style, { position:'absolute', inset:0, background:'#000', zIndex:0 });
+  host.appendChild(base);
+
+  // Stadium bg image
+  const stadium = document.createElement('img');
+  stadium.src = './stadium.png';
+  stadium.alt = '';
+  stadium.id  = 'stadium-bg';
+  Object.assign(stadium.style, { position:'absolute', inset:0, zIndex:1 });
+  host.appendChild(stadium);
+
+  // Fence canvas (blurred)
+  const fenceCvs = document.createElement('canvas');
+  fenceCvs.width = W; fenceCvs.height = H;
+  Object.assign(fenceCvs.style, { position:'absolute', inset:0, width:'100%', height:'100%', display:'block', filter:'blur(3px)', transform:'scale(1.02)', zIndex:2, pointerEvents:'none' });
+  host.appendChild(fenceCvs);
+  drawFence(fenceCvs.getContext('2d'), W, H);
+
+  // Court floor (perspective-warped, cover texture)
+  const floorWrap = document.createElement('div');
+  floorWrap.id = 'court-floor';
+  floorWrap.innerHTML = `<div id="court-floor-img"></div><div id="floor-fade-near"></div><div id="floor-fade-far"></div>`;
+  host.appendChild(floorWrap);
+
+  // Hoop canvas — static, drawn once
+  const hoopCvs = document.createElement('canvas');
+  hoopCvs.width = W; hoopCvs.height = H;
+  Object.assign(hoopCvs.style, { position:'absolute', inset:0, width:'100%', height:'100%', display:'block', zIndex:4, pointerEvents:'none' });
+  host.appendChild(hoopCvs);
+  const hCtx = hoopCvs.getContext('2d');
+  drawHomeBase(hCtx, spawnX, spawnY, BR);
+  drawHoopImage(hCtx, hoopImg, backboardImg, rimX, rimY, HW);
+
+  // Physics/ball canvas — redrawn every frame
+  const physCvs = document.createElement('canvas');
+  physCvs.width = W; physCvs.height = H;
+  Object.assign(physCvs.style, { position:'absolute', inset:0, width:'100%', height:'100%', display:'block', zIndex:8, background:'transparent', pointerEvents:'none' });
+  /* z-index ladder: stadium(1) fence(2) floor(3) hoop(4) → ball(8) → HUD(10) overlay(60) */
+  host.appendChild(physCvs);
+  const pCtx = physCvs.getContext('2d');
+
+  // HUD
+  const hud = document.createElement('div');
+  hud.id = 'hud';
+  hud.innerHTML = `
+    <div class="brand-bar">
+      <svg width="20" height="20" viewBox="0 0 12 12" fill="none">
+        <circle cx="6" cy="6" r="5" stroke="${RED}" stroke-width="1.4"/>
+        <line x1="6" y1="1" x2="6" y2="11" stroke="${RED}" stroke-width="1.4"/>
+        <line x1="1" y1="6" x2="11" y2="6" stroke="${RED}" stroke-width="1.4"/>
+      </svg>
+      <span>Project SXC Presents</span>
+    </div>
+    <div class="title-bar">
+      <span class="tagline">Swipe to Shoot</span>
+      <div class="hs-box">
+        <span class="hs-lbl">High Score</span>
+        <span class="hs-val" id="hs-val" style="text-shadow:${neonGlow(ORANGE)}">0</span>
+      </div>
+    </div>
+    <div class="red-line"></div>
+    <div class="stat-row">
+      <div class="stat-card left">
+        <p class="stat-label" style="color:${ORANGE};text-shadow:0 0 6px rgba(255,95,31,.7)">Current Score</p>
+        <p class="stat-value" id="score-val" style="color:${ORANGE};text-shadow:${neonGlow(ORANGE)}">0</p>
+      </div>
+      <div class="stat-card right">
+        <p class="stat-label" id="timer-lbl" style="color:${ORANGE}">Time Left</p>
+        <p class="stat-value" id="timer-val" style="color:${ORANGE};text-shadow:${neonGlow(ORANGE)}">0:42</p>
+      </div>
+    </div>
+    <div class="timer-track">
+      <div class="timer-fill" id="timer-fill" style="width:100%;background:${ORANGE};box-shadow:0 0 8px ${ORANGE}"></div>
+    </div>`;
+  host.appendChild(hud);
+
+  // Score flash
+  const flash = document.createElement('div');
+  flash.id = 'score-flash';
+  flash.innerHTML = `<span>+${CFG.pointsPerMake}</span>`;
+  host.appendChild(flash);
+
+  // Shoot hint
+  const hint = document.createElement('div');
+  hint.id = 'hint';
+  hint.innerHTML = `<p class="hw">Swipe the ball</p><p class="hr">to shoot!</p>
+    <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
+      <path d="M7 18l8-9 8 9M7 11l8-9 8 9" stroke="${ORANGE}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`;
+  host.appendChild(hint);
+
+  // ── Reset Ball button (always-visible safety net at bottom of screen) ──
+  const resetBtn = document.createElement('button');
+  resetBtn.id = 'reset-btn';
+  resetBtn.textContent = '↺ Reset Ball';
+  Object.assign(resetBtn.style, {
+    position: 'absolute',
+    bottom: '14px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: '15',
+    background: 'rgba(0,0,0,0.68)',
+    border: '1px solid rgba(255,95,31,0.45)',
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: '11px',
+    fontWeight: '700',
+    letterSpacing: '.18em',
+    textTransform: 'uppercase',
+    fontFamily: 'inherit',
+    padding: '8px 20px',
+    borderRadius: '2px',
+    cursor: 'pointer',
+    pointerEvents: 'auto',
+    touchAction: 'manipulation',
+    boxShadow: '0 0 12px rgba(255,95,31,0.12)',
+    transition: 'all .15s',
+  });
+  resetBtn.addEventListener('pointerdown', e => {
+    e.stopPropagation();
+    resetBall();
+    resetBtn.style.color = ORANGE;
+    setTimeout(() => { resetBtn.style.color = 'rgba(255,255,255,0.55)'; }, 400);
+  });
+  host.appendChild(resetBtn);
+
+  // Email overlay
+  const overlay = document.createElement('div');
+  overlay.id = 'email-overlay';
+  overlay.innerHTML = `
+    <div class="email-card">
+      <div style="font-size:40px;line-height:1">🏀</div>
+      <div>
+        <h2>Win a Prize!</h2>
+        <p>Enter your email to redeem your prize if you win!</p>
+      </div>
+      <div class="email-wrap">
+        <input type="email" inputmode="email" autocomplete="email"
+          placeholder="you@example.com" id="email-inp" class="email-input"/>
+        <span id="email-chk" class="email-chk"></span>
+      </div>
+      <p id="email-err" class="email-errmsg">Please enter a valid email address</p>
+      <button id="start-btn" class="start-btn" disabled>START GAME</button>
+      <a href="https://www.aibizservice.com" target="_blank" rel="noopener noreferrer" class="overlay-b2b">
+        Custom AI for your business? <span style="color:${ORANGE}">Visit www.aibizservice.com</span>
+      </a>
+    </div>`;
+  host.appendChild(overlay);
+
+  /* ── GAME STATE ── */
+  let score       = 0;
+  let timeLeft    = CFG.timerSec;
+  let gameStarted = !!initialEmail;
+  let gameEnded   = false;
+  let phase       = initialEmail ? 'done' : 'idle'; // idle | showing | done
+  let timerID     = null;
+  let respawnID   = null;
+
+  /* ── PHYSICS ENGINE ── (no Matter.Render — we draw manually) */
+  const engine = Matter.Engine.create({ gravity: { y: 1.0, scale: 0.0008 } });
+  const runner  = Matter.Runner.create();
+
+  function mkRim(x, y) {
+    return Matter.Bodies.rectangle(x, y, RT * 2, RT * 2, {
+      isStatic: true, restitution: 0.45, friction: 0.35,
+      label: 'rim', render: { visible: false },
+    });
+  }
+  const lRim   = mkRim(rimX - HW, rimY);
+  const rRim   = mkRim(rimX + HW, rimY);
+  const netSen = Matter.Bodies.rectangle(rimX, rimY + NH/2 + RT, HW*2 - RT*2, NH, { isStatic:true, isSensor:true, label:'net', render:{ visible:false } });
+  const ground = Matter.Bodies.rectangle(W/2, H+50, W*3, 100, { isStatic:true, label:'ground', render:{ visible:false } });
+  const wallL  = Matter.Bodies.rectangle(-50,  H/2, 100, H*3, { isStatic:true, render:{ visible:false } });
+  const wallR  = Matter.Bodies.rectangle(W+50, H/2, 100, H*3, { isStatic:true, render:{ visible:false } });
+
+  function mkBall(x, y) {
+    return Matter.Bodies.circle(x, y, BR, {
+      restitution: 0.8, friction: 0.04, frictionAir: 0.028, density: 0.006,
+      label: 'ball', render: { visible: false },
+    });
+  }
+
+  let ball       = mkBall(spawnX, spawnY);
+  let ballInPlay = false;
+  let ballPastR  = false;
+  Matter.Body.setStatic(ball, true);
+  Matter.World.add(engine.world, [ball, lRim, rRim, netSen, ground, wallL, wallR]);
+
+  /* TESTING: 24-hour lockout disabled — every win shows Champion screen + triggers email.
+     To re-enable, change the line below back to: store.getCooldown().locked          */
+  const prizeAlreadyClaimed = false;
+  let prizeToastShown = false; // toast is unreachable while prizeAlreadyClaimed = false
+
+  /* In-game toast — slides in, auto-dismisses after 3.5 s */
+  function showToast(line1, line2) {
+    const old = host.querySelector('#game-toast');
+    if (old) host.removeChild(old);
+    const t = document.createElement('div');
+    t.id = 'game-toast';
+    t.style.cssText = `
+      position:absolute; left:50%; top:22%;
+      transform:translateX(-50%);
+      z-index:50; pointer-events:none;
+      width:calc(100% - 48px); max-width:320px;
+      background:rgba(0,0,0,0.90);
+      border:1.5px solid rgba(255,95,31,0.65);
+      box-shadow:0 0 30px rgba(255,95,31,0.25);
+      padding:20px 24px; text-align:center;
+      display:flex; flex-direction:column; gap:10px;
+      animation:toastSlideIn 0.38s cubic-bezier(0.22,1,0.36,1) both;
+      transition:opacity .3s, transform .3s;
+    `;
+    t.innerHTML = `
+      <p style="font-size:26px;line-height:1">🏀</p>
+      <p style="font-size:15px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:${ORANGE};text-shadow:0 0 10px rgba(255,95,31,.5)">${line1}</p>
+      <p style="font-size:12px;line-height:1.55;color:rgba(255,255,255,.78)">${line2}</p>
+      <a href="https://www.aibizservice.com" target="_blank" rel="noopener noreferrer"
+        style="font-size:10px;color:${ORANGE};text-decoration:none;letter-spacing:.08em;pointer-events:auto">
+        www.aibizservice.com →
+      </a>`;
+    host.appendChild(t);
+    setTimeout(() => {
+      if (!t.parentNode) return;
+      t.style.opacity = '0';
+      t.style.transform = 'translateX(-50%) scale(0.9)';
+      setTimeout(() => { if (t.parentNode) host.removeChild(t); }, 320);
+    }, 3500);
+  }
+
+  function clearRespawn() { if (respawnID) { clearTimeout(respawnID); respawnID = null; } }
+  function resetBall() {
+    clearRespawn();
+    isDrag = false; ptrStart = null;
+    Matter.World.remove(engine.world, ball);
+    ball = mkBall(spawnX, spawnY);
+    Matter.Body.setStatic(ball, true);
+    Matter.World.add(engine.world, ball);
+    ballInPlay = false; ballPastR = false;
+  }
+  function schedRespawn(ms) { clearRespawn(); respawnID = setTimeout(resetBall, ms); }
+
+  /* Collision events — scoring + sounds */
   Matter.Events.on(engine, 'collisionStart', (ev) => {
-    ev.pairs.forEach(p => {
-      const labels = [p.bodyA.label, p.bodyB.label];
-      if (labels.includes('ball') && labels.includes('goal') && ball.velocity.y > 0) {
-        APP.score += 2;
-        document.getElementById('score-val').textContent = APP.score;
-        document.getElementById('score-flash').classList.add('show');
-        setTimeout(() => document.getElementById('score-flash').classList.remove('show'), 500);
-        
-        if (APP.score >= CFG.winScore && !store.getCooldown()) {
-          endGame(true);
+    ev.pairs.forEach(({ bodyA, bodyB }) => {
+      const ls = [bodyA.label, bodyB.label];
+      if (ls.includes('ball') && ballInPlay) {
+        if (ls.includes('rim')) { playSound('rim'); }
+        else if (ls.includes('ground')) {
+          const b = ls[0]==='ball' ? bodyA : bodyB;
+          if (Math.abs(b.velocity.y) > 0.3) playSound('floor');
+        }
+      }
+      if (ls.includes('net') && ls.includes('ball') && ballInPlay && !ballPastR) {
+        const b = ls[0]==='ball' ? bodyA : bodyB;
+        if (b.velocity.y > 0) {
+          ballPastR = true;
+          score += CFG.pointsPerMake;
+          const sv = document.getElementById('score-val');
+          const hv = document.getElementById('hs-val');
+          if (sv) sv.textContent = score;
+          if (hv) hv.textContent = score;
+          const fl = document.getElementById('score-flash');
+          if (fl) { fl.classList.add('show'); setTimeout(() => fl.classList.remove('show'), 700); }
+          if (score >= CFG.winScore && !gameEnded) {
+            if (prizeAlreadyClaimed) {
+              // Player already won today — show toast once and keep playing
+              if (!prizeToastShown) {
+                prizeToastShown = true;
+                showToast(
+                  'Great Shot!',
+                  "You've already claimed today's prize.<br>Come back tomorrow for another chance!"
+                );
+              }
+              schedRespawn(1000);
+            } else {
+              gameEnded = true;
+              setTimeout(() => endGame(score, true), 600);
+            }
+          } else { schedRespawn(1000); }
         }
       }
     });
   });
 
+  /* afterUpdate — safety net: NaN guard + generous ceiling + floor + side walls */
+  Matter.Events.on(engine, 'afterUpdate', () => {
+    if (!ball || !ballInPlay) return;
+    const { x, y } = ball.position;
+    // NaN safety valve — corrupt physics coords → instant reset
+    if (isNaN(x) || isNaN(y) || !isFinite(x) || !isFinite(y)) { resetBall(); return; }
+    // Ceiling at -1200 so the arc has full room; only reset if truly gone
+    if (y < -1200)                      { schedRespawn(0); return; }
+    if (y > H + 80)                     { schedRespawn(0); return; } // below floor
+    if (x < -BR * 4 || x > W + BR * 4) { schedRespawn(0); return; } // off sides
+  });
+
+  /* ── CUSTOM RENDER LOOP (rAF — full control, no Matter.Render) ── */
+  let rafId = null;
+  function frame() {
+    pCtx.clearRect(0, 0, W, H);
+
+    const { x, y } = ball.position;
+
+    // NaN safety valve — corrupt physics state → immediate reset, no canvas crash
+    if (isNaN(x) || isNaN(y) || !isFinite(x) || !isFinite(y)) {
+      resetBall();
+      rafId = requestAnimationFrame(frame);
+      return;
+    }
+
+    /* Perspective scale: ball grows as it rises toward the hoop */
+    const rawPct = (spawnY - y) / (spawnY - rimY);
+    const t01    = Math.max(0, Math.min(1, rawPct));
+    const eased  = t01 * t01 * (3 - 2 * t01); // smoothstep
+    const above  = Math.max(0, rawPct - 1) * 0.12;
+    const drawR  = BR * (1.0 + eased * 0.28 + above);
+
+    /* Ground shadow */
+    const sfY = spawnY + BR;
+    if (ballInPlay && y <= sfY) {
+      const haf = sfY - y, maxH = spawnY * 0.85;
+      const t   = Math.min(1, haf / maxH);
+      const sRx = drawR * (1.35 - t * 0.65);
+      const sRy = drawR * (0.28 - t * 0.16);
+      const sA  = 0.55 * (1 - t * 0.7);
+      if (sA > 0.01) {
+        pCtx.save(); pCtx.globalAlpha = sA;
+        const sg = pCtx.createRadialGradient(x, sfY, 0, x, sfY, sRx);
+        sg.addColorStop(0, 'rgba(0,0,0,0.9)');
+        sg.addColorStop(0.5, 'rgba(0,0,0,0.45)');
+        sg.addColorStop(1, 'rgba(0,0,0,0)');
+        pCtx.fillStyle = sg;
+        pCtx.beginPath(); pCtx.ellipse(x, sfY, sRx, sRy, 0, 0, Math.PI * 2); pCtx.fill();
+        pCtx.restore();
+      }
+    }
+
+    /* Ball PNG */
+    drawBallImage(pCtx, ballImg, x, y, drawR, ball.angle);
+
+    /* Neon glow ring — keeps ball visible on dark/grey backgrounds */
+    pCtx.save();
+    pCtx.shadowColor = ORANGE; pCtx.shadowBlur = 18;
+    pCtx.strokeStyle = 'rgba(255,95,31,0.55)'; pCtx.lineWidth = 2.5;
+    pCtx.beginPath(); pCtx.arc(x, y, drawR + 1.5, 0, Math.PI * 2); pCtx.stroke();
+    pCtx.restore();
+
+    rafId = requestAnimationFrame(frame);
+  }
+  rafId = requestAnimationFrame(frame);
+  Matter.Runner.run(runner, engine);
+
+  /* ── TIMER ── */
+  function updateTimerUI() {
+    const m = Math.floor(timeLeft / 60), s = (timeLeft % 60).toString().padStart(2, '0');
+    const col = timeLeft > 12 ? ORANGE : RED;
+    const tv = document.getElementById('timer-val'), tl = document.getElementById('timer-lbl'), tf = document.getElementById('timer-fill');
+    if (tv) { tv.textContent = `${m}:${s}`; tv.style.color = col; tv.style.textShadow = neonGlow(col); }
+    if (tl) tl.style.color = col;
+    if (tf) { tf.style.width = `${(timeLeft / CFG.timerSec) * 100}%`; tf.style.background = col; tf.style.boxShadow = `0 0 8px ${col}`; }
+  }
   function startTimer() {
-    gameStarted = true;
-    timerInterval = setInterval(() => {
-      APP.timeLeft--;
-      document.getElementById('timer-val').textContent = `0:${APP.timeLeft < 10 ? '0' : ''}${APP.timeLeft}`;
-      if (APP.timeLeft <= 0) endGame(false);
+    if (timerID) return;
+    const h = document.getElementById('hint'); if (h) h.style.display = 'none';
+    timerID = setInterval(() => {
+      if (gameEnded) { clearInterval(timerID); timerID = null; return; }
+      timeLeft--;
+      updateTimerUI();
+      if (timeLeft <= 0) {
+        clearInterval(timerID); timerID = null;
+        gameEnded = true;
+        endGame(score, score >= CFG.winScore);
+      }
     }, 1000);
   }
+  if (gameStarted) startTimer();
 
-  function endGame(win) {
-    clearInterval(timerInterval);
-    if (win) {
-      store.recordWin();
-      emailjs.send(EJ.svc, EJ.tpl, { to_email: APP.email, score: APP.score }, EJ.pub);
-    }
-    APP.screen = win ? 'win' : 'loss';
-    renderRoot();
+  function endGame(s, isWin) {
+    clearRespawn();
+    onGameEnd(s, isWin);
+    setTimeout(() => go(isWin ? 'win' : 'loss'), 400);
   }
 
-  // Overlay Logic
-  if (!store.getEmail()) {
-    document.getElementById('email-overlay').classList.add('show');
-  } else {
-    APP.email = store.getEmail();
+  /* ── POINTER EVENTS (drag-to-position + swipe-up to shoot) ── */
+  let isDrag   = false;
+  let ptrStart = null;
+
+  host.addEventListener('pointerdown', (e) => {
+    if (phase === 'idle') {
+      phase = 'showing'; overlay.classList.add('show');
+      setTimeout(() => document.getElementById('email-inp')?.focus(), 80);
+      return;
+    }
+    if (phase === 'showing') return;
+    resumeAudio();
+    if (ballInPlay || !ball || gameEnded) return;
+    const margin = BR + 20;
+    const cx = Math.max(margin, Math.min(W - margin, e.clientX));
+    Matter.Body.setStatic(ball, true);
+    Matter.Body.setPosition(ball, { x: cx, y: spawnY });
+    isDrag = true;
+    ptrStart = { x: e.clientX, y: e.clientY, time: performance.now() };
+  });
+
+  host.addEventListener('pointermove', (e) => {
+    if (phase !== 'done' || !isDrag || !ball) return;
+    const margin = BR + 20;
+    const cx = Math.max(margin, Math.min(W - margin, e.clientX));
+    Matter.Body.setPosition(ball, { x: cx, y: spawnY });
+    const now = performance.now();
+    if (ptrStart && (now - ptrStart.time) > 100) ptrStart = { x: e.clientX, y: e.clientY, time: now };
+  });
+
+  function doShoot(e) {
+    // Phase check removed — ball fires the moment a swipe is detected
+    if (!isDrag) return;
+    isDrag = false;
+    const start = ptrStart; ptrStart = null;
+    if (!start || !ball || ballInPlay) return;
+
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    // DISTANCE-BASED POWER: 200 px of upward travel = full power
+    // No time division → no Infinity / NaN from glitched timestamps
+    if (dy < -30 && dist > 30) {
+      if (!gameStarted) { gameStarted = true; startTimer(); }
+
+      Matter.Body.setStatic(ball, false);
+
+      const powerPct = Math.min(1, Math.abs(dy) / 200); // 0..1 linear
+
+      // Vertical: -7 (short lob) → -14 (full-distance shot)
+      const vy = -(7 + powerPct * 7);
+
+      // Horizontal: swipe direction + position-toward-hoop + magnet
+      const toHoopX = rimX - ball.position.x;
+      const posVx   = toHoopX * 0.022;
+      const swipeVx = dist > 0 ? (dx / dist) * powerPct * 8 : 0;
+      const magnet  = toHoopX * 0.007 * Math.max(0, 1 - Math.abs(toHoopX) / 100);
+      const vx = Math.max(-12.0, Math.min(12.0, posVx * 0.55 + swipeVx * 0.45 + magnet));
+
+      ballInPlay = true; ballPastR = false;
+      Matter.Body.setVelocity(ball, { x: vx, y: vy });
+      Matter.Body.setAngularVelocity(ball, vx * 0.15);
+      schedRespawn(2200);
+    }
   }
 
-  document.getElementById('start-btn').onclick = () => {
-    const val = document.getElementById('email-inp').value;
-    if (EMAIL_RE.test(val)) {
-      APP.email = val;
-      store.saveEmail(val);
-      document.getElementById('email-overlay').classList.remove('show');
-    }
+  host.addEventListener('pointerup',     doShoot);
+  host.addEventListener('pointercancel', () => { isDrag = false; ptrStart = null; });
+
+  /* ── EMAIL OVERLAY LOGIC ── */
+  const emailInp = document.getElementById('email-inp');
+  const startBtn = document.getElementById('start-btn');
+  const emailChk = document.getElementById('email-chk');
+  const emailErr = document.getElementById('email-err');
+
+  overlay.addEventListener('pointerdown', e => e.stopPropagation());
+  overlay.addEventListener('pointermove',  e => e.stopPropagation());
+  overlay.addEventListener('pointerup',    e => e.stopPropagation());
+
+  let touched = false;
+  function refreshEmailUI() {
+    const v = emailInp.value.trim(), ok = EMAIL_RE.test(v);
+    emailInp.className = 'email-input' + (v.length ? (ok ? ' valid' : ' err') : '');
+    emailChk.textContent = v.length ? (ok ? '✓' : '✗') : '';
+    emailChk.style.color = ok ? ORANGE : RED;
+    startBtn.disabled = !ok;
+    emailErr.style.display = (touched && v.length && !ok) ? 'block' : 'none';
+  }
+  emailInp.addEventListener('input', refreshEmailUI);
+  emailInp.addEventListener('blur', () => { touched = true; refreshEmailUI(); });
+  emailInp.addEventListener('keydown', e => { if (e.key === 'Enter') submitEmail(); });
+  startBtn.addEventListener('click', submitEmail);
+
+  function submitEmail() {
+    const v = emailInp.value.trim();
+    if (!EMAIL_RE.test(v)) return;
+    onEmailCaptured(v);
+    phase = 'done'; gameStarted = true;
+    overlay.classList.remove('show');
+    resumeAudio();
+    startTimer();
+  }
+
+  /* Register handles for destroyEngine */
+  _eng = {
+    engine, runner, rafId: null,
+    cleanup: () => {
+      if (timerID)   { clearInterval(timerID);  timerID = null; }
+      if (respawnID) { clearTimeout(respawnID); respawnID = null; }
+      if (rafId)     { cancelAnimationFrame(rafId); rafId = null; }
+    },
   };
-
-  // Rendering Loop
-  function frame() {
-    ctx.clearRect(0, 0, W, H);
-    
-    // Draw Hoop
-    if (hoopImg) {
-      const hScale = (CFG.rimHW * 2) / (hoopImg.naturalWidth * CFG.hoopRimWFrac);
-      const hW = hoopImg.naturalWidth * hScale;
-      const hH = hoopImg.naturalHeight * hScale;
-      ctx.drawImage(hoopImg, rimX - hW / 2, rimY - (hH * CFG.hoopRimYFrac), hW, hH);
-    }
-
-    // Draw Ball
-    const { x, y } = ball.position;
-    if (isFinite(x) && isFinite(y)) {
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(ball.angle);
-      if (ballImg) ctx.drawImage(ballImg, -CFG.ballR, -CFG.ballR, CFG.ballR * 2, CFG.ballR * 2);
-      ctx.restore();
-    }
-
-    if (y > H + 100 || x < -100 || x > W + 100) resetBall();
-
-    requestAnimationFrame(frame);
-  }
-
-  Matter.Runner.run(runner, engine);
-  frame();
+  /* Keep rafId in sync */
+  Object.defineProperty(_eng, 'rafId', { get: () => rafId, set: v => { rafId = v; } });
 }
 
-function renderRoot() {
-  const root = document.getElementById('root');
-  if (APP.screen === 'game') {
-    mountGame(root);
-  } else {
-    root.innerHTML = `
-      <div class="result-screen">
-        <h1>${APP.screen === 'win' ? 'CHAMPION!' : 'GAME OVER'}</h1>
-        <p>Final Score: ${APP.score}</p>
-        <button class="cta-btn" onclick="location.reload()">PLAY AGAIN</button>
+/* ═══════════════════════════════════════════════
+   WIN SCREEN
+═══════════════════════════════════════════════ */
+function mountWin(host) {
+  host.className = 'result-screen fade-in';
+  host.innerHTML = `
+    <div style="position:absolute;inset:0;background:radial-gradient(ellipse 80% 60% at 50% 40%,rgba(255,95,31,.07) 0%,transparent 70%);pointer-events:none"></div>
+    <div class="result-inner">
+      <div class="result-icon" style="filter:drop-shadow(0 0 16px rgba(255,95,31,.8))">🏆</div>
+      <div style="text-align:center">
+        <h1 style="font-size:clamp(54px,16vw,83px);font-weight:900;letter-spacing:.06em;line-height:1;color:${ORANGE};text-shadow:${neonGlow(ORANGE)};text-transform:uppercase">CHAMPION!</h1>
+        <p style="margin-top:10px;font-size:clamp(11px,3vw,14px);font-weight:700;letter-spacing:.16em;color:#fff;text-transform:uppercase;opacity:.8">YOU CONQUERED THE ASPHALT!</p>
       </div>
-    `;
+      <div class="result-divider" style="background:linear-gradient(to right,transparent,rgba(255,95,31,.8),transparent)"></div>
+      <div class="score-grp">
+        <span class="score-lbl">Final Score</span>
+        <span class="score-big" style="color:${RED};text-shadow:${neonGlow(RED)}">${APP.finalScore}</span>
+        <span class="score-sub">Target: ${CFG.winScore} pts</span>
+      </div>
+      <div class="voucher-box" style="border:1px solid rgba(255,95,31,.33);box-shadow:0 0 24px rgba(255,95,31,.11)">
+        <p style="font-size:12px;font-weight:900;letter-spacing:.2em;color:${ORANGE};text-transform:uppercase;text-shadow:0 0 10px rgba(255,95,31,.53)">✅ VOUCHER SENT! CHECK YOUR INBOX.</p>
+        <p style="font-size:24px;font-weight:900;letter-spacing:.12em;color:#fff;text-shadow:${neonGlow(ORANGE)};font-variant-numeric:tabular-nums">${APP.voucherCode}</p>
+        <p style="font-size:11px;color:rgba(255,255,255,.45);line-height:1.5">Show this code to staff to claim your reward.</p>
+      </div>
+      <button id="pa-btn" class="cta-btn" style="background:linear-gradient(135deg,${ORANGE},${RED});color:#fff;box-shadow:0 0 18px rgba(255,95,31,.38)">PLAY AGAIN</button>
+      <a href="https://www.aibizservice.com" target="_blank" rel="noopener noreferrer" class="b2b-link">
+        Custom AI for your business? <span style="color:${ORANGE};font-weight:700">Visit www.aibizservice.com</span>
+      </a>
+    </div>
+    <p class="brand-footer">Project SXC</p>`;
+  document.getElementById('pa-btn').addEventListener('click', onPlayAgain);
+}
+
+/* ═══════════════════════════════════════════════
+   LOSS SCREEN
+═══════════════════════════════════════════════ */
+function mountLoss(host) {
+  host.className = 'result-screen fade-in';
+  host.innerHTML = `
+    <div style="position:absolute;inset:0;background:radial-gradient(ellipse 80% 60% at 50% 40%,rgba(206,17,65,.08) 0%,transparent 68%);pointer-events:none"></div>
+    <div class="result-inner">
+      <div class="result-icon">💀</div>
+      <div style="text-align:center">
+        <h1 style="font-size:clamp(48px,14vw,72px);font-weight:900;letter-spacing:.1em;line-height:1;color:${RED};text-shadow:${neonGlow(RED)};text-transform:uppercase">GAME OVER</h1>
+        <p style="margin-top:10px;font-size:clamp(12px,3.2vw,14px);font-weight:700;letter-spacing:.18em;color:#fff;text-transform:uppercase;opacity:.6">TIME'S UP</p>
+      </div>
+      <div class="result-divider" style="background:linear-gradient(to right,transparent,rgba(206,17,65,.8),transparent)"></div>
+      <div class="score-grp">
+        <span class="score-lbl">Your Score</span>
+        <span class="score-big" style="color:${RED};text-shadow:${neonGlow(RED)}">${APP.finalScore}</span>
+        <span class="score-sub">Needed ${CFG.winScore} pts to win</span>
+      </div>
+      <button id="ta-btn" class="cta-btn" style="background:${ORANGE};color:#fff;box-shadow:0 0 18px rgba(255,95,31,.38)">TRY AGAIN</button>
+      <a href="https://www.aibizservice.com" target="_blank" rel="noopener noreferrer" class="b2b-link">
+        Custom AI for your business? <span style="color:${ORANGE};font-weight:700">Visit www.aibizservice.com</span>
+      </a>
+    </div>
+    <p class="brand-footer">Project SXC</p>`;
+  document.getElementById('ta-btn').addEventListener('click', onPlayAgain);
+}
+
+/* ═══════════════════════════════════════════════
+   COOLDOWN SCREEN
+═══════════════════════════════════════════════ */
+function mountCooldown(host) {
+  host.className = 'result-screen fade-in';
+  host.innerHTML = `
+    <div style="position:absolute;inset:0;background:radial-gradient(ellipse 80% 55% at 50% 40%,rgba(206,17,65,.06) 0%,transparent 70%);pointer-events:none"></div>
+    <div class="result-inner">
+      <div class="result-icon" style="filter:drop-shadow(0 0 20px rgba(255,95,31,.8))">🏆</div>
+      <div style="text-align:center">
+        <h1 style="font-size:clamp(42px,14vw,64px);font-weight:900;letter-spacing:.06em;line-height:1;text-transform:uppercase;color:${ORANGE};text-shadow:${neonGlow(ORANGE)};margin:0">CHAMPION!</h1>
+        <p style="margin-top:12px;font-size:clamp(12px,3.2vw,15px);font-weight:700;letter-spacing:.08em;line-height:1.6;color:rgba(255,255,255,.72);text-transform:uppercase">
+          You've already claimed your prize for today.<br>The court resets for you in
+        </p>
+      </div>
+      <div class="cd-box">
+        <div class="cd-unit"><span class="cd-num" id="cd-big" style="color:${RED};text-shadow:${neonGlow(RED)}">--</span><span class="cd-lbl" id="cd-big-lbl">Hours</span></div>
+        <span class="cd-colon">:</span>
+        <div class="cd-unit"><span class="cd-num" id="cd-sm" style="color:${RED};text-shadow:${neonGlow(RED)}">--</span><span class="cd-lbl" id="cd-sm-lbl">Minutes</span></div>
+      </div>
+      <div class="result-divider" style="background:linear-gradient(to right,transparent,rgba(255,95,31,.33),transparent)"></div>
+      <a href="https://www.aibizservice.com" target="_blank" rel="noopener noreferrer"
+        style="display:flex;flex-direction:column;align-items:center;gap:4px;text-decoration:none;width:100%;padding:18px 20px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)">
+        <span style="font-size:10px;letter-spacing:.1em;color:rgba(255,255,255,.4);text-transform:uppercase">Custom AI for your business?</span>
+        <span style="font-size:14px;font-weight:900;letter-spacing:.18em;text-transform:uppercase;color:${ORANGE};text-shadow:0 0 10px rgba(255,95,31,.4)">VISIT AIBIZSERVICE.COM →</span>
+      </a>
+    </div>
+    <p class="brand-footer">Project SXC</p>`;
+
+  function tick() {
+    const { locked, msLeft } = store.getCooldown();
+    if (!locked) { onCooldownExpired(); return; }
+    const total = Math.max(0, Math.ceil(msLeft / 1000));
+    const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), s = total % 60;
+    let big, bigLbl, sm, smLbl;
+    if (h > 0) { big=h; bigLbl=h===1?'Hour':'Hours'; sm=m; smLbl=m===1?'Minute':'Minutes'; }
+    else        { big=m; bigLbl=m===1?'Minute':'Minutes'; sm=s; smLbl=s===1?'Second':'Seconds'; }
+    const bEl=document.getElementById('cd-big'), blEl=document.getElementById('cd-big-lbl');
+    const sEl=document.getElementById('cd-sm'),  slEl=document.getElementById('cd-sm-lbl');
+    if (bEl) bEl.textContent = String(big).padStart(2,'0');
+    if (sEl) sEl.textContent = String(sm).padStart(2,'0');
+    if (blEl) blEl.textContent = bigLbl;
+    if (slEl) slEl.textContent = smLbl;
+  }
+  tick();
+  const cdID = setInterval(() => { if (document.getElementById('cd-big')) tick(); else clearInterval(cdID); }, 1000);
+}
+
+/* ═══════════════════════════════════════════════
+   ROOT RENDERER
+═══════════════════════════════════════════════ */
+function renderRoot() {
+  destroyEngine();
+  const root = document.getElementById('root');
+  root.innerHTML = ''; root.className = '';
+  root.style.cssText = 'width:100%;height:100dvh;position:relative;';
+
+  if      (APP.screen === 'cooldown') { mountCooldown(root); }
+  else if (APP.screen === 'win')      { mountWin(root);      }
+  else if (APP.screen === 'loss')     { mountLoss(root);     }
+  else {
+    root.style.overflow   = 'hidden';
+    root.style.touchAction = 'none';
+    root.style.userSelect  = 'none';
+    APP.sessionEmail = store.getEmail();
+    mountGame(root, APP.sessionEmail);
   }
 }
 
-renderRoot();
+/* ═══════════════════════════════════════════════
+   BOOT
+═══════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', () => {
+  // Always boot into the game — no cooldown wall blocking play
+  APP.screen = 'game';
+  renderRoot();
+});
 </script>
 </body>
 </html>
